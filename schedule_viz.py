@@ -64,12 +64,12 @@ schedule = pd.concat(schedule_list, ignore_index=True)
 colors = px.colors.qualitative.Plotly
 color_idx = 0
 
-# Plot all jobs as their own trace for increased plotting flexibility
-fig = go.Figure()
+# Create traces for each job
+traces = []
 for name in schedule["name"].unique():
     job_schedule = schedule[schedule["name"] == name]
 
-    fig.add_trace(
+    traces.append(
         go.Bar(
             name=name,
             base=job_schedule["start_time"],
@@ -123,55 +123,57 @@ for name in schedule["name"].unique():
     )
     color_idx = color_idx + 1
 
-# Match colors of each job's time constraints with the job's color if specified
-fig.for_each_trace(
-    lambda trace: trace.update(error_x_color=trace["marker"]["color"])
-    if trace["marker"]["color"] is not None
-    else ()
+# Create button for showing/hiding time constraints
+time_constraint_button = dict(
+    label="Toggle Time Constraints",
+    method="restyle",
+    args=[{"error_x.visible": True}],
+    args2=[{"error_x.visible": False}],
+)
+time_constraint_menu = dict(
+    type="buttons", buttons=[time_constraint_button], yanchor="bottom"
 )
 
-# Titles
-fig.update_layout(
+# Create a dropdown for showing/hiding jobs grouped by period
+period_buttons = []
+for period in schedule["period"].unique():
+    period_schedule = schedule[schedule["period"] == period]
+
+    period_buttons.append(
+        dict(
+            label="Period: " + str(period),
+            method="restyle",
+            args=[
+                {"visible": True},
+                [
+                    trace_idx
+                    for trace_idx, trace in enumerate(traces)
+                    if (trace.customdata[:, 1] == period).all()
+                ],
+            ],
+            args2=[
+                {"visible": "legendonly"},
+                [
+                    trace_idx
+                    for trace_idx, trace in enumerate(traces)
+                    if (trace.customdata[:, 1] == period).all()
+                ],
+            ],
+        )
+    )
+
+period_menu = dict(type="dropdown", buttons=period_buttons)
+
+layout = go.Layout(
     title_text="Schedule",
     legend_title_text="Job",
     xaxis_title_text="Time",
     yaxis_title_text="Machine",
+    barmode="overlay",  # overlay each job to visualize conflicts if any
+    xaxis=dict(rangeslider=dict(visible=True), type="linear"),  # add range slider
+    # Add menus for time constraints and jobs grouped by period
+    updatemenus=[time_constraint_menu, period_menu],
 )
-
-# Overlay each job
-fig.update_layout(barmode="overlay")
-
-# Add range slider
-fig.update_layout(xaxis=dict(rangeslider=dict(visible=True), type="linear"))
-
-# Add buttons for showing/hiding time constraints
-fig.update_layout(
-    updatemenus=[
-        dict(
-            type="buttons",
-            showactive=True,
-            buttons=list(
-                [
-                    dict(
-                        label="Show Time Constraints",
-                        method="restyle",
-                        args=[{"error_x.visible": True}],
-                    ),
-                    dict(
-                        label="Hide Time Constraints",
-                        method="restyle",
-                        args=[{"error_x.visible": False}],
-                    ),
-                ]
-            ),
-        )
-    ]
-)
-
-# TODO each filter should just set the appropriate traces visible and not visibile
-# Add dropdown for period
-# period_buttons = [dict(label=str(period), args=[], method="update") for period in schedule["period"].unique()]
-# Do I want to remove the other period data when displaying or decrease the opacity? Decreasing the opacity still keeps context if needed.
 
 # TODO add precedence information to job instances, as it can be used in customdata for logic on filtering traces
 # show precedence relations
@@ -185,5 +187,14 @@ fig.update_layout(
 # What about the other successor job instances? It would require us to output all instances of the successor jobs... futurework i guess
 
 # Visualizing time lag and slack time for each instance, would need to dynamically calculate these values for each instance
+
+fig = go.Figure(data=traces, layout=layout)
+
+# Match colors of each job's time constraints with the job's color if specified
+fig.for_each_trace(
+    lambda trace: trace.update(error_x_color=trace["marker"]["color"])
+    if trace["marker"]["color"] is not None
+    else ()
+)
 
 fig.show()
