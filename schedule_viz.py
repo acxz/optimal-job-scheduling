@@ -123,11 +123,19 @@ for name in schedule["name"].unique():
     )
     color_idx = color_idx + 1
 
-# Match colors of each job's delay and earliness with the job's bar color if specified
+# Match colors of each job's time constraints with the job's color if specified
 fig.for_each_trace(
     lambda trace: trace.update(error_x_color=trace["marker"]["color"])
     if trace["marker"]["color"] is not None
     else ()
+)
+
+# Titles
+fig.update_layout(
+    title_text="Schedule",
+    legend_title_text="Job",
+    xaxis_title_text="Time",
+    yaxis_title_text="Machine",
 )
 
 # Overlay each job
@@ -136,10 +144,34 @@ fig.update_layout(barmode="overlay")
 # Add range slider
 fig.update_layout(xaxis=dict(rangeslider=dict(visible=True), type="linear"))
 
-# TODO https://plotly.com/python-api-reference/generated/plotly.graph_objects.bar.html#plotly.graph_objects.bar.ErrorX.visible
-# can add ability to flip off error part of each trace
+# Add buttons for showing/hiding time constraints
+fig.update_layout(
+    updatemenus=[
+        dict(
+            type="buttons",
+            showactive=True,
+            buttons=list(
+                [
+                    dict(
+                        label="Show Time Constraints",
+                        method="restyle",
+                        args=[{"error_x.visible": True}],
+                    ),
+                    dict(
+                        label="Hide Time Constraints",
+                        method="restyle",
+                        args=[{"error_x.visible": False}],
+                    ),
+                ]
+            ),
+        )
+    ]
+)
 
 # TODO each filter should just set the appropriate traces visible and not visibile
+# Add dropdown for period
+# period_buttons = [dict(label=str(period), args=[], method="update") for period in schedule["period"].unique()]
+# Do I want to remove the other period data when displaying or decrease the opacity? Decreasing the opacity still keeps context if needed.
 
 # TODO add precedence information to job instances, as it can be used in customdata for logic on filtering traces
 # show precedence relations
@@ -153,36 +185,5 @@ fig.update_layout(xaxis=dict(rangeslider=dict(visible=True), type="linear"))
 # What about the other successor job instances? It would require us to output all instances of the successor jobs... futurework i guess
 
 # Visualizing time lag and slack time for each instance, would need to dynamically calculate these values for each instance
-
-# have filters such as period group
-
-# Add dropdown for period
-# import pdb; pdb.set_trace()
-# period_buttons = [dict(label=str(period), args=[], method="update") for period in schedule["period"].unique()]
-
-# Do I want to remove the other period data when displaying or decrease the opacity? Decreasing the opacity still keeps context if needed.
-# import pdb; pdb.set_trace()
-
-# fig.update_layout(
-#    updatemenus=[
-#        dict(
-#            buttons=list(
-#                [
-#                    dict(
-#                        args=["type", "surface"], label="3D Surface", method="restyle"
-#                    ),
-#                    dict(args=["type", "heatmap"], label="Heatmap", method="restyle"),
-#                ]
-#            ),
-#            direction="down",
-#            pad={"r": 10, "t": 10},
-#            showactive=True,
-#            x=0.1,
-#            xanchor="left",
-#            y=1.1,
-#            yanchor="top",
-#        ),
-#    ]
-# )
 
 fig.show()
