@@ -8,6 +8,7 @@
 import argparse
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
 # TODO: read from standard in
 parser = argparse.ArgumentParser()
@@ -24,28 +25,33 @@ jobs = pd.read_csv(input_schedule_csv)
 # Ensure the name is a string
 jobs["name"] = jobs["name"].apply(lambda value: str(value))
 
-# Add completion times for each job
+# Add completion times, delays, and earliness for each job
 jobs["completion_time"] = jobs["start_time"] + jobs["processing_time"]
+# TODO potentially make delay and earliness part of the schedule output
+jobs["earliness"] = jobs["due_date"] - jobs["completion_time"]
+# delay is defined as S_j - r_j
+jobs["delay"] = jobs["start_time"] - jobs["release_time"]
 
 
-# Create the schedule with the periodic jobs
+# Populate a schedule with periodic job instances
 def create_job_instances(record):
     job_instances = pd.DataFrame()
     for instance_idx in range(int(record["instances"])):
         job_instance = pd.DataFrame(record).transpose()
-        job_instance["release_time"] = (
-            instance_idx * job_instance["period"] + job_instance["release_time"]
-        )
-        job_instance["due_date"] = (
-            instance_idx * job_instance["period"] + job_instance["due_date"]
-        )
+        job_instance["instance"] = instance_idx + 1
+        job_instance["machine"] = str(1)
         job_instance["start_time"] = (
             instance_idx * job_instance["period"] + job_instance["start_time"]
         )
         job_instance["completion_time"] = (
             instance_idx * job_instance["period"] + job_instance["completion_time"]
         )
-        job_instance["machine"] = str(1)
+        job_instance["release_time"] = (
+            instance_idx * job_instance["period"] + job_instance["release_time"]
+        )
+        job_instance["due_date"] = (
+            instance_idx * job_instance["period"] + job_instance["due_date"]
+        )
         job_instances = pd.concat([job_instances, job_instance], ignore_index=True)
     return job_instances
 
@@ -54,29 +60,88 @@ schedule_series = jobs.apply((create_job_instances), axis="columns")
 schedule_list = schedule_series.tolist()
 schedule = pd.concat(schedule_list, ignore_index=True)
 
-fig = px.bar(
-    schedule,
-    base="start_time",
-    x="processing_time",
-    y="machine",
-#    error_x=dict(
-#        type="data",
-#        symmetric=False,
-#        array=(schedule["due_date"] - schedule["completion_time"]).tolist(),
-#        arrayminus=(schedule["start_time"] - schedule["release_time"]).tolist(),
-#    ),
-    color="name",
-    orientation="h",
-    opacity=0.7,  # have some opacity to show overlap
+# Manually set colors
+colors = px.colors.qualitative.Plotly
+color_idx = 0
+
+# Plot all jobs as their own trace for increased plotting flexibility
+fig = go.Figure()
+for name in schedule["name"].unique():
+    job_schedule = schedule[schedule["name"] == name]
+
+    fig.add_trace(
+        go.Bar(
+            name=name,
+            base=job_schedule["start_time"],
+            x=job_schedule["processing_time"],
+            y=job_schedule["machine"],
+            error_x=dict(
+                type="data",
+                symmetric=False,
+                array=None
+                if job_schedule["earliness"].isnull().all()
+                else job_schedule["earliness"],
+                # Add processing time since the error's origin is at the end of the bar, i.e. at completion time
+                arrayminus=None
+                if job_schedule["delay"].isnull().all()
+                else job_schedule["processing_time"] + job_schedule["delay"],
+            ),
+            hovertemplate="instance=%{customdata[6]}<br>"
+            + "start_time=%{customdata[7]}<br>"
+            + "completion_time=%{customdata[8]}<br>"
+            + "release_time=%{customdata[9]}<br>"
+            + "due_date=%{customdata[10]}<br>"
+            + "<extra>"
+            + "name=%{customdata[0]}<br>"
+            + "period=%{customdata[1]}<br>"
+            + "processing_time=%{customdata[2]}<br>"
+            + "delay=%{customdata[3]}<br>"
+            + "earliness=%{customdata[4]}<br>"
+            + "machine=%{customdata[5]}"
+            + "</extra>",
+            customdata=job_schedule[
+                [
+                    "name",
+                    "period",
+                    "processing_time",
+                    "delay",
+                    "earliness",
+                    "machine",
+                    "instance",
+                    "start_time",
+                    "completion_time",
+                    "release_time",
+                    "due_date",
+                ]
+            ],
+            orientation="h",
+            opacity=0.5,  # have some opacity to show overlap
+            marker_color=colors[
+                color_idx
+            ],  # specify colors manually to match error colors
+        )
+    )
+    color_idx = color_idx + 1
+
+# Match colors of each job's delay and earliness with the job's bar color if specified
+fig.for_each_trace(
+    lambda trace: trace.update(error_x_color=trace["marker"]["color"])
+    if trace["marker"]["color"] is not None
+    else ()
 )
+
+# Overlay each job
+fig.update_layout(barmode="overlay")
 
 # Add range slider
 fig.update_layout(xaxis=dict(rangeslider=dict(visible=True), type="linear"))
 
-# Here is an example in matplotlib with possible time interval
-# https://github.com/d-krupke/cpsat-primer?tab=readme-ov-file#scheduling-and-packing-with-intervals
-# show conflicts
+# TODO https://plotly.com/python-api-reference/generated/plotly.graph_objects.bar.html#plotly.graph_objects.bar.ErrorX.visible
+# can add ability to flip off error part of each trace
 
+# TODO each filter should just set the appropriate traces visible and not visibile
+
+# TODO add precedence information to job instances, as it can be used in customdata for logic on filtering traces
 # show precedence relations
 # idea, when clicking on a particular job instance, show the predecessor job instances for it and the successor job instances for it (kind of like a graph)
 # can also expand to show the successor's successors and the predecessor's predecessors
@@ -86,6 +151,8 @@ fig.update_layout(xaxis=dict(rangeslider=dict(visible=True), type="linear"))
 # To extrapolate this information, the solver can tell us and we can include in our output
 # something like predecessor_instance: [1, 3, 45], where the list represents the predecessor job instance for the first successor job instance
 # What about the other successor job instances? It would require us to output all instances of the successor jobs... futurework i guess
+
+# Visualizing time lag and slack time for each instance, would need to dynamically calculate these values for each instance
 
 # have filters such as period group
 
