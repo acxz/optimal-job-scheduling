@@ -134,14 +134,34 @@ time_constraint_menu = dict(
     type="buttons", buttons=[time_constraint_button], yanchor="bottom"
 )
 
-# Create a dropdown for showing/hiding jobs grouped by period
+# Create a dropdown for showing jobs grouped by period
+# For reference: https://stackoverflow.com/questions/65941253/plotly-how-to-toggle-traces-with-a-button-similar-to-clicking-them-in-legend
 period_buttons = []
 for period in schedule["period"].unique():
     period_schedule = schedule[schedule["period"] == period]
 
+    # Create a button for showing jobs only with a particular period
     period_buttons.append(
         dict(
-            label="Period: " + str(period),
+            label="Only Show Period: " + str(period),
+            method="restyle",
+            args=[
+                {
+                    "visible": [
+                        True
+                        if (trace.customdata[:, 1] == period).all()
+                        else "legendonly"
+                        for trace in traces
+                    ]
+                }
+            ],
+        )
+    )
+
+    # Create a button for showing/hiding jobs grouped by period
+    period_buttons.append(
+        dict(
+            label="Toggle Period: " + str(period),
             method="restyle",
             args=[
                 {"visible": True},
@@ -175,6 +195,17 @@ layout = go.Layout(
     updatemenus=[time_constraint_menu, period_menu],
 )
 
+fig = go.Figure(data=traces, layout=layout)
+
+# Match colors of each job's time constraints with the job's color if specified
+fig.for_each_trace(
+    lambda trace: trace.update(error_x_color=trace["marker"]["color"])
+    if trace["marker"]["color"] is not None
+    else ()
+)
+
+fig.show()
+
 # TODO add precedence information to job instances, as it can be used in customdata for logic on filtering traces
 # show precedence relations
 # idea, when clicking on a particular job instance, show the predecessor job instances for it and the successor job instances for it (kind of like a graph)
@@ -187,14 +218,3 @@ layout = go.Layout(
 # What about the other successor job instances? It would require us to output all instances of the successor jobs... futurework i guess
 
 # Visualizing time lag and slack time for each instance, would need to dynamically calculate these values for each instance
-
-fig = go.Figure(data=traces, layout=layout)
-
-# Match colors of each job's time constraints with the job's color if specified
-fig.for_each_trace(
-    lambda trace: trace.update(error_x_color=trace["marker"]["color"])
-    if trace["marker"]["color"] is not None
-    else ()
-)
-
-fig.show()
