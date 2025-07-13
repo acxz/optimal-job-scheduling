@@ -15,11 +15,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "input",
     type=str,
-    help="A schedule input file of jobs specifying their characteristics. If all start times are specified, then the start times are checked for.",
+    nargs="?",
+    default="-",  # use "-" to denote stdin by convention
+    help="csv of jobs specifying their characteristics. If all start times are specified, then the start times are checked for.",
 )
 args = parser.parse_args()
-input_schedule_csv = args.input
-reader = csv.DictReader(open(input_schedule_csv))
+input_schedule_file = sys.stdin if args.input == "-" else open(args.input)
+reader = csv.DictReader(input_schedule_file)
 
 # TODO: create a dictionary of dicts, iterate via .items()
 jobs = []
@@ -133,17 +135,14 @@ for row in reader:
     }
     jobs.append(job)
 
-# Compute the cycle time of the problem and the number of instances of each job in the cycle time
-# The cycle time is the period at which all jobs have a combined periodicity
-# i.e. the least common multiple of all jobs' periods
+# Compute the hyper-period of the schedule
 periods = [jobs[idx]["period"] for idx in range(len(jobs))]
-cycle_time = math.lcm(*periods)
+hyper_period = math.lcm(*periods)
 
-# Obtain the number of periods for each job that fit in the cycle time
-# i.e. the num of instances of a job in the cycle time
+# Obtain the number of instances for each job in the hyper-period
 for idx in range(len(jobs)):
     job = jobs[idx]
-    job["instances"] = cycle_time // job["period"]
+    job["instances"] = hyper_period // job["period"]
 
 model = cp_model.CpModel()
 
@@ -153,7 +152,7 @@ interval_vars = []
 for idx in range(len(jobs)):
     job = jobs[idx]
     # Ensure the job starts on a valid bound
-    # Bound is tighter than cycle_time - job['processing_time']
+    # Bound is tighter than hyper_period - job['processing_time']
     # since we do not wrap a job to the next cycle, a job instance cannot
     # wrap across its period either
     if job["start_time"] is None:
