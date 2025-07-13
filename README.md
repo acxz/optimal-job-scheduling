@@ -62,7 +62,7 @@ uv run schedule.py < schedule_input.csv | uv run schedule_viz.py
 
 ### CP-SAT
 
-The underlying solver used for this codebase is [CP-SAT](https://developers.google.com/optimization/cp) which is a part of [OR-Tools](https://developers.google.com/optimization/). In addition to the [Scheduling Overview](https://developers.google.com/optimization/scheduling) provided in OR-Tools' documentation, [@d-krupke](https://github.com/d-krupke)'s [CP-SAT Primer](https://d-krupke.github.io/cpsat-primer/) has a wonderful section on [scheduling](https://d-krupke.github.io/cpsat-primer/04B_advanced_modelling.html#scheduling-and-packing-with-intervals). For another resource on constraint programming with CP-SAT, take a look at [Lecture 8: Intro to Constraint Programming](https://www.cis.upenn.edu/~cis1890/files/Lecture8.pdf) and [Lecture 9: More Constraint Programming](https://www.cis.upenn.edu/~cis1890/files/Lecture9.pdf) of [UPenn's CIS 1890: Solving Hard Problems in Practice](https://www.cis.upenn.edu/~cis1890/).
+The underlying solver used for this codebase is [CP-SAT](https://developers.google.com/optimization/cp) which is a part of [OR-Tools](https://developers.google.com/optimization/). In addition to the [Scheduling Overview](https://developers.google.com/optimization/scheduling) and [`scheduling.md`](https://github.com/google/or-tools/blob/stable/ortools/sat/docs/scheduling.md) provided in OR-Tools' documentation, [@d-krupke](https://github.com/d-krupke)'s [CP-SAT Primer](https://d-krupke.github.io/cpsat-primer/) has a [wonderful section on scheduling](https://d-krupke.github.io/cpsat-primer/04B_advanced_modelling.html#scheduling-and-packing-with-intervals). Also see [OR-Tools' User Manual](https://acrogenesis.com/or-tools/documentation/user_manual/) for general CP-SAT usage. For another resource on constraint programming with CP-SAT, take a look at [Lecture 8: Intro to Constraint Programming](https://www.cis.upenn.edu/~cis1890/files/Lecture8.pdf) and [Lecture 9: More Constraint Programming](https://www.cis.upenn.edu/~cis1890/files/Lecture9.pdf) of [UPenn's CIS 1890: Solving Hard Problems in Practice](https://www.cis.upenn.edu/~cis1890/).
 
 ### Harmonic Periods
 
@@ -81,6 +81,8 @@ Divisors of 20:
 
 ## Future Work
 
-Currently, the solver that is used for this tool is OR-Tools' CP-SAT. In order to have a solver agnostic architecture, one can define the problem in [cpmpy](https://github.com/CPMpy/cpmpy).
+The solver that is used for this tool is OR-Tools' CP-SAT. In order to have a solver agnostic architecture, one can define the problem in [cpmpy](https://github.com/CPMpy/cpmpy).
+
+Debugging an infeasible model is currently not possible, however, this can be done via [assumptions](https://github.com/d-krupke/cpsat-primer?tab=readme-ov-file#assumptions).
 
 From a problem space perspective, support for additional scheduling problems, such as ones with multiple machines, multi-stage jobs, preemption, other objectives, etc. can be added. This can be done by allowing the user to specify the scheduling problem in the three-field notation and provide the schedule problem data, from which the script can construct the appropriate variables, constraints, and objectives for the solver. Note that such a tool does not exist currently and probably hasn't existed yet due to the fact that domain specific scheduling problems are typically constructed directly in the model rather than in three-field notation.
