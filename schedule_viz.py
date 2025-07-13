@@ -6,21 +6,23 @@
 # ///
 
 import argparse
+import sys
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-# TODO: read from standard in
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "input",
+    "schedule",
     type=str,
-    help="A schedule input file of jobs specifying their characteristics.",
+    nargs="?",
+    default="-",  # use "-" to denote stdin by convention
+    help="csv of jobs specifying their characteristics via stdin or specified as a file.",
 )
 args = parser.parse_args()
 
-input_schedule_csv = args.input
-jobs = pd.read_csv(input_schedule_csv)
+schedule_file = sys.stdin if args.schedule == "-" else args.schedule
+jobs = pd.read_csv(schedule_file)
 
 # Ensure the name is a string
 jobs["name"] = jobs["name"].apply(lambda value: str(value))
