@@ -17,9 +17,7 @@ This repository serves to provide utilities for creating, verifying, and visuali
 $^1$ The slack time between two jobs is the amount of time in which the second job must be started after the first job is completed. Formally, if job $i$ precedes job $j$, then $C_i + s_{ij} \geq S_j$ must be true. $C_i$ is the completion time of job $i$, $s_{ij}$ is the slack time job $j$ is allowed following job $i$, and $S_j$ is the start time of job $j$.
 The term is based on [project management terminology](https://en.wikipedia.org/wiki/Float_(project_management)) as the three-field scheduling notation has no widespread term for this concept.
 
-A great resource on modeling periodic scheduling problems is [Survey on Periodic Scheduling for Time-triggered Hard Real-time Systems](https://dl.acm.org/doi/abs/10.1145/3431232).
-
-Insert image from visualize to show
+[![Schedule Demo](./schedule_demo.png)](./schedule_demo.png)
 
 ## Dependencies
 
@@ -59,6 +57,8 @@ uv run schedule.py < schedule_input.csv | uv run schedule_viz.py
 ```
 
 ## Additional Notes
+
+A great resource on modeling periodic scheduling problems is [Survey on Periodic Scheduling for Time-triggered Hard Real-time Systems](https://dl.acm.org/doi/abs/10.1145/3431232).
 
 ### CP-SAT
 

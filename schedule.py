@@ -204,53 +204,42 @@ for successor_idx in range(len(jobs)):
             ][0]
 
             # Precedence of jobs running at different periods can be hard to reason about.
-            # The following rationale for time lags and slack times is used here, where we do not discuss the different periods between the predecessor and successor, but rather focus on if for all successor job instances do any predecessor job instance satisfy the constraint. If so, then the precedence relationship is respected.
-            # Time Lag: The time lag precedence relationship means that a successor job can only start a certain time lag after the predecessor job has completed. In the period case, for all successor job instances, if any instance of the predecessor job has completed before the time lag but after a previous successor job instance, then the precedence relationship has been met. Note the additional clause to check only the predecessor job instances which have occurred in the current successor job instance's period and not before. This ensures that we are not checking for example the first predecessor job instance, which if chosen, would trivially satisfy the constraint for all successor job instances after.
+            # The following rationale for time lags and slack times is used here, where we do not discuss the different periods between the predecessor and successor, but rather focus on if for all successor job instances of any predecessor job instance satisfy the constraint. If so, then the precedence relationship is respected.
+            # Time Lag: The time lag precedence relationship means that a successor job can only start a certain time lag after the predecessor job has completed. In the periodic case, for all successor job instances, if any instance of the predecessor job has completed before the time lag but after a previous successor job instance, then the precedence relationship has been met. This logic can be simplified to only check the immediate predecessor. Note the additional clause to check only the immediate predecessor job instance and not any before. This ensures that we are not checking the first predecessor job instance, which would trivially satisfy the constraint for all successor job instances thereafter. Also note the following, resulting from the logic above. A job with a smaller period cannot be a successor to a job with a higher period.
             # Slack Time: While it may be harder to comprehend, the slack time constraint is simpler to implement. The slack time precedence relationship means that a successor job must start within the slack time after the predecessor job has finished. In the periodic case, for all successor job instances, if any predecessor job instance is within the slack time and occurs before the successor job instance, then the slack time precedence relationship has been met.
 
-            # TMP: First Period Time Lag Constraint
-            model.add(
-                predecessor_job["start_time_var"]
-                + predecessor_job["processing_time"]
-                + successor_job["time_lags"][predecessor_idx]
-                <= successor_job["start_time_var"]
-            )
+            # Ensure the time lags are respected
+            for successor_instance_idx in range(successor_job["instances"]):
+                # Create list to hold whether a predecessor instance satisfies the time lag constraint for a successor instance
+                predecessor_lag_satisfied = []
 
-            # TODO: Periodic Time Lag Constraint
-            ## Ensure the time lags are respected
-            # for successor_instance_idx in range(successor_job["instances"]):
+                for predecessor_instance_idx in range(predecessor_job["instances"]):
+                    # Boolean variable to keep track if a particular predecessor job instance satisfies the time lag constraint for a successor job instance
+                    lag_satisfied = model.new_bool_var(
+                        f"successor_job_{successor_idx}_instance_{successor_instance_idx}_predecessor_job_{predecessor_idx}_instance_{predecessor_instance_idx}_time_lag"
+                    )
+                    predecessor_lag_satisfied.append(lag_satisfied)
 
-            #    # Create list to hold whether a predecessor instance satisfies the time lag constraint for a successor instance
-            #    predecessor_lag_satisfied = []
+                    # Reify the time lag constraint
+                    # 1st condition: Ensure the predecessor instance occurs before the successor instance
+                    model.add(
+                        predecessor_job["start_time_var"]
+                        + predecessor_instance_idx * predecessor_job["period"]
+                        + predecessor_job["processing_time"]
+                        <= successor_job["start_time_var"]
+                        + successor_instance_idx * successor_job["period"]
+                    ).only_enforce_if(lag_satisfied)
+                    # 2st condition: Ensure the successor instance occurs before the next predecessor instance in the successor instance's period
+                    model.add(
+                        successor_job["start_time_var"]
+                        >= predecessor_job["start_time_var"]
+                        + predecessor_job["processing_time"]
+                        + successor_job["time_lags"][predecessor_idx]
+                    ).only_enforce_if(lag_satisfied)
 
-            #    for predecessor_instance_idx in range(predecessor_job["instances"]):
-
-            #        # Boolean variable to keep track if a particular predecessor job instance satisfies the time lag constraint for a successor job instance
-            #        lag_satisfied = model.new_bool_var(
-            #            f"successor_job_{successor_idx}_instance_{successor_instance_idx}_predecessor_job_{predecessor_idx}_instance_{predecessor_instance_idx}_time_lag"
-            #        )
-            #        predecessor_lag_satisfied.append(lag_satisfied)
-
-            #        # Reify the time lag constraint
-            #        # 1st condition: Ensure the predecessor instance occurs before the successor instance
-            #        model.add(
-            #            predecessor_job["start_time_var"]
-            #            + predecessor_instance_idx * predecessor_job["period"]
-            #            + predecessor_job["processing_time"]
-            #            <= successor_job["start_time_var"]
-            #            + successor_instance_idx * successor_job["period"]
-            #        ).only_enforce_if(lag_satisfied)
-            #        # 2st condition: Ensure the successor instance occurs before the next predecessor instance in the successor instance's period
-            #        model.add(
-            #            successor_job["start_time_var"]
-            #            >= predecessor_job["start_time_var"]
-            #            + predecessor_job["processing_time"]
-            #            + successor_job["time_lags"][predecessor_idx]
-            #        ).only_enforce_if(lag_satisfied)
-
-            #    # Ensure that at least one predecessor instance satisfies the time lag constraint
-            #    # As this statement is in a successor instance for loop, We add this constraint for every successor instance
-            #    model.add_bool_or(predecessor_lag_satisfied)
+                # Ensure that at least one predecessor instance satisfies the time lag constraint
+                # As this statement is in a successor instance for loop, We add this constraint for every successor instance
+                model.add_bool_or(predecessor_lag_satisfied)
 
             # Ensure the slack times are respected
             if successor_job["slack_times"][predecessor_idx] is not None:
@@ -302,12 +291,12 @@ for idx in range(len(jobs)):
     jobs[idx]["flow_time_var"] = (
         jobs[idx]["completion_time_var"] - jobs[idx]["release_time"]
         if jobs[idx]["release_time"] is not None
-        else 0
+        else None
     )
     jobs[idx]["earliness_var"] = (
         jobs[idx]["deadline"] - jobs[idx]["completion_time_var"]
         if jobs[idx]["deadline"] is not None
-        else 0
+        else None
     )
 
 model.minimize(
@@ -321,12 +310,14 @@ model.minimize(
     sum(
         jobs[idx]["flow_time_weight"] * jobs[idx]["flow_time_var"]
         for idx in range(len(jobs))
+        if jobs[idx]["flow_time_var"] is not None
     )
     +
     # Minimize the earliness
     sum(
         jobs[idx]["earliness_weight"] * jobs[idx]["earliness_var"]
         for idx in range(len(jobs))
+        if jobs[idx]["earliness_var"] is not None
     )
 )
 
@@ -344,8 +335,16 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
             job = jobs[idx]
             job["start_time"] = solver.value(job["start_time_var"])
             job["completion_time"] = solver.value(job["completion_time_var"])
-            job["flow_time"] = solver.value(job["flow_time_var"])
-            job["earliness"] = solver.value(job["earliness_var"])
+            job["flow_time"] = (
+                solver.value(job["flow_time_var"])
+                if job["flow_time_var"] is not None
+                else None
+            )
+            job["earliness"] = (
+                solver.value(job["earliness_var"])
+                if job["earliness_var"] is not None
+                else None
+            )
             # Get rid of variables in our job dictionary before output
             job.pop("start_time_var", None)
             job.pop("interval_vars", None)

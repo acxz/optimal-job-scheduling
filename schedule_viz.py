@@ -91,6 +91,7 @@ for name in schedule["name"].unique():
             + "processing_time=%{customdata[2]}<br>"
             + "flow_time=%{customdata[3]}<br>"
             + "earliness=%{customdata[4]}<br>"
+            + "predecessors=%{customdata[11]}<br>"
             + "machine=%{customdata[5]}"
             + "</extra>",
             customdata=job_schedule[
@@ -106,6 +107,7 @@ for name in schedule["name"].unique():
                     "completion_time",
                     "release_time",
                     "deadline",
+                    "predecessors",
                 ]
             ],
             orientation="h",
@@ -134,7 +136,7 @@ period_buttons = []
 for period in schedule["period"].unique():
     period_schedule = schedule[schedule["period"] == period]
 
-    # Create a button for showing jobs only with a particular period
+    # Create a button for showing jobs only with a particular period/showing all jobs
     period_buttons.append(
         dict(
             label="Only Show Period: " + str(period),
@@ -148,6 +150,10 @@ for period in schedule["period"].unique():
                         for trace in traces
                     ]
                 }
+            ],
+            args2=[
+                {"visible": True},
+                [trace_idx for trace_idx, trace in enumerate(traces)],
             ],
         )
     )
@@ -199,16 +205,3 @@ fig.for_each_trace(
 )
 
 fig.show()
-
-# TODO add precedence information to job instances, as it can be used in customdata for logic on filtering traces
-# show precedence relations
-# idea, when clicking on a particular job instance, show the predecessor job instances for it and the successor job instances for it (kind of like a graph)
-# can also expand to show the successor's successors and the predecessor's predecessors
-# This would be a really neat visualization and help show the job dependency graph
-# Could even help identify if a job needs to run at a particular period?
-# Or if sporadic instances of the job can be removed from the schedule
-# To extrapolate this information, the solver can tell us and we can include in our output
-# something like predecessor_instance: [1, 3, 45], where the list represents the predecessor job instance for the first successor job instance
-# What about the other successor job instances? It would require us to output all instances of the successor jobs... futurework i guess
-
-# Visualizing time lag and slack time for each instance, would need to dynamically calculate these values for each instance

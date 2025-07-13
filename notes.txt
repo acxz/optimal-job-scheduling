@@ -34,3 +34,33 @@ job x has start time of 3
 2: o
 3: x
 Can the model come up with this solution?
+
+## Predecessor outputs
+
+For each job instace, add output of specific predecessor instance and the specific delay from the predecessor
+i.e. add the following columns in the schedule output
+name,...,predecessors,...,instances,predecessor_instances,instance_predecessor_delay
+a,...,4                                               # job a has 4 instances in the hyper-period, no predecessors
+b,...,"[a]",...,2,[[1], [3]],[[5], [6]]               # job b has 1 instance in the hyper-period, 1 predecessor
+c,...,"[a, b]",...,2,[[2, 1],[4, 2]],[[1, 2],[1, 2]]  # job c has 2 instances in the hyper-period, 2 predecessors
+
+Outer dimension is the job's instance,
+Inner dimension is the predecessor's instance
+[[pred_idx_instance_idx,pred_idx_instance_idx]_instance_idx,[pred_idx_instance_idx,pred_idx_instance_idx]_instance_idx]
+pred_idx is determined based on input, instance_idx based on start_time for the instance
+
+## Visualize
+
+Predecessor groups
+Successor groups
+Predecessor&Successor group
+
+Somehow display the specific predecessor and successor instances, maybe as numbers on a button click or action
+add precedence information to job instances, as it can be used in customdata for logic on filtering traces
+show precedence relations
+idea, when clicking on a particular job instance, show the predecessor job instances for it and the successor job instances for it (kind of like a graph)
+
+can also expand to show the successor's successors and the predecessor's predecessors
+This would be a really neat visualization and help show the job dependency graph for a single instance
+Could even help identify if a job needs to run at a particular period?
+Or if sporadic instances of the job can be removed from the schedule

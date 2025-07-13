@@ -1,4 +1,6 @@
 name,period,start_time,processing_time,release_time,deadline,predecessors,time_lags,slack_times,completion_time_weight,flow_time_weight,earliness_weight
-1,20,,10,,,,,,1,,
-2,40,,5,10,20,,,,0,,
-3,40,,1,10,20,"['1', '2']","[3, 0]","[5, 0]",0,,
+1,20,,5,,,,,,1,,
+2,40,,5,,15,,,,,,
+3,40,,1,10,20,"['2']",,"[0]",,,
+4,20,,1,,,"['1', '2']","[5, 0]","[10, None]",-1,,
+5,30,,3,,,,,,,,
