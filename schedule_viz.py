@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "input",
     type=str,
-    help="A schedule input file specifying a job's period, processing time, release time, due date, and start time.",
+    help="A schedule input file of jobs specifying their characteristics.",
 )
 args = parser.parse_args()
 
@@ -24,13 +24,6 @@ jobs = pd.read_csv(input_schedule_csv)
 
 # Ensure the name is a string
 jobs["name"] = jobs["name"].apply(lambda value: str(value))
-
-# Add completion times, delays, and earliness for each job
-jobs["completion_time"] = jobs["start_time"] + jobs["processing_time"]
-# TODO potentially make delay and earliness part of the schedule output
-jobs["earliness"] = jobs["due_date"] - jobs["completion_time"]
-# delay is defined as S_j - r_j
-jobs["delay"] = jobs["start_time"] - jobs["release_time"]
 
 
 # Populate a schedule with periodic job instances
@@ -49,8 +42,8 @@ def create_job_instances(record):
         job_instance["release_time"] = (
             instance_idx * job_instance["period"] + job_instance["release_time"]
         )
-        job_instance["due_date"] = (
-            instance_idx * job_instance["period"] + job_instance["due_date"]
+        job_instance["deadline"] = (
+            instance_idx * job_instance["period"] + job_instance["deadline"]
         )
         job_instances = pd.concat([job_instances, job_instance], ignore_index=True)
     return job_instances
@@ -81,21 +74,20 @@ for name in schedule["name"].unique():
                 array=None
                 if job_schedule["earliness"].isnull().all()
                 else job_schedule["earliness"],
-                # Add processing time since the error's origin is at the end of the bar, i.e. at completion time
                 arrayminus=None
-                if job_schedule["delay"].isnull().all()
-                else job_schedule["processing_time"] + job_schedule["delay"],
+                if job_schedule["flow_time"].isnull().all()
+                else job_schedule["flow_time"],
             ),
             hovertemplate="instance=%{customdata[6]}<br>"
             + "start_time=%{customdata[7]}<br>"
             + "completion_time=%{customdata[8]}<br>"
             + "release_time=%{customdata[9]}<br>"
-            + "due_date=%{customdata[10]}<br>"
+            + "deadline=%{customdata[10]}<br>"
             + "<extra>"
             + "name=%{customdata[0]}<br>"
             + "period=%{customdata[1]}<br>"
             + "processing_time=%{customdata[2]}<br>"
-            + "delay=%{customdata[3]}<br>"
+            + "flow_time=%{customdata[3]}<br>"
             + "earliness=%{customdata[4]}<br>"
             + "machine=%{customdata[5]}"
             + "</extra>",
@@ -104,14 +96,14 @@ for name in schedule["name"].unique():
                     "name",
                     "period",
                     "processing_time",
-                    "delay",
+                    "flow_time",
                     "earliness",
                     "machine",
                     "instance",
                     "start_time",
                     "completion_time",
                     "release_time",
-                    "due_date",
+                    "deadline",
                 ]
             ],
             orientation="h",

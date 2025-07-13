@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "input",
     type=str,
-    help="A schedule input file specifying a job's period, processing time, release time, due date, and start time. If all start times are specified, then the start times are checked for.",
+    help="A schedule input file of jobs specifying their characteristics. If all start times are specified, then the start times are checked for.",
 )
 args = parser.parse_args()
 input_schedule_csv = args.input
@@ -27,12 +27,14 @@ jobs = []
 has_period = "period" in reader.fieldnames
 has_processing_time = "processing_time" in reader.fieldnames
 has_release_time = "release_time" in reader.fieldnames
-has_due_date = "due_date" in reader.fieldnames
+has_deadline = "deadline" in reader.fieldnames
 has_start_time = "start_time" in reader.fieldnames
 has_predecessors = "predecessors" in reader.fieldnames
 has_slack_times = "slack_times" in reader.fieldnames
 has_time_lags = "time_lags" in reader.fieldnames
-has_start_time_weight = "start_time_weight" in reader.fieldnames
+has_completion_time_weight = "completion_time_weight" in reader.fieldnames
+has_flow_time_weight = "flow_time_weight" in reader.fieldnames
+has_earliness_weight = "earliness_weight" in reader.fieldnames
 
 for row in reader:
     predecessors = (
@@ -111,14 +113,20 @@ for row in reader:
         "release_time": int(row["release_time"])
         if has_release_time and row["release_time"] != ""
         else None,
-        "due_date": int(row["due_date"])
-        if has_due_date and row["due_date"] != ""
+        "deadline": int(row["deadline"])
+        if has_deadline and row["deadline"] != ""
         else None,
         "predecessors": predecessors,
         "time_lags": time_lags,
         "slack_times": slack_times,
-        "start_time_weight": int(row["start_time_weight"])
-        if has_start_time_weight and row["start_time_weight"] != ""
+        "completion_time_weight": int(row["completion_time_weight"])
+        if has_completion_time_weight and row["completion_time_weight"] != ""
+        else 0,
+        "flow_time_weight": int(row["flow_time_weight"])
+        if has_flow_time_weight and row["flow_time_weight"] != ""
+        else 0,
+        "earliness_weight": int(row["earliness_weight"])
+        if has_earliness_weight and row["earliness_weight"] != ""
         else 0,
         # variable to solve for
         "start_time_var": None,
@@ -158,19 +166,14 @@ for idx in range(len(jobs)):
     else:
         job["start_time_var"] = model.new_constant(job["start_time"])
 
-    # Ensure the release time and due date are respected
-    # In this context of periodicity, release time and due date are defined as
+    # Ensure the release time and deadline are respected
+    # In this context of periodicity, release time and deadline are defined as
     # a time within the job's first period
-    # Note: there may be a way to make the period a variable to solve for
-    # based on the timing constraints (release time -> due date)
-    # For example if I know that for my job, the release time is at a
-    # period and time, and the due date is so much time since, then I
-    # should be able to extract the period and time that a job should be started
     if job["release_time"] is not None:
         model.add(job["start_time_var"] >= job["release_time"])
 
-    if job["due_date"] is not None:
-        model.add(job["start_time_var"] + job["processing_time"] <= job["due_date"])
+    if job["deadline"] is not None:
+        model.add(job["start_time_var"] + job["processing_time"] <= job["deadline"])
 
     for instance_idx in range(job["instances"]):
         # An interval variable for each instance of the job during the cycle is
@@ -292,10 +295,38 @@ for successor_idx in range(len(jobs)):
                     # Every successor instance needs to have at least one predecessor instance for which the slack time constraint is satisfied by
                     model.add_bool_or(predecessor_slack_satisfied)
 
-# Minimize the start time of jobs
+# Define intermediary variables for the objective function
+for idx in range(len(jobs)):
+    jobs[idx]["completion_time_var"] = (
+        jobs[idx]["start_time_var"] + jobs[idx]["processing_time"]
+    )
+    jobs[idx]["flow_time_var"] = (
+        jobs[idx]["completion_time_var"] - jobs[idx]["release_time"]
+        if jobs[idx]["release_time"] is not None
+        else 0
+    )
+    jobs[idx]["earliness_var"] = (
+        jobs[idx]["deadline"] - jobs[idx]["completion_time_var"]
+        if jobs[idx]["deadline"] is not None
+        else 0
+    )
+
 model.minimize(
+    # Minimize the completion time
     sum(
-        jobs[idx]["start_time_weight"] * jobs[idx]["start_time_var"]
+        jobs[idx]["completion_time_weight"] * jobs[idx]["completion_time_var"]
+        for idx in range(len(jobs))
+    )
+    +
+    # Minimize the flow time
+    sum(
+        jobs[idx]["flow_time_weight"] * jobs[idx]["flow_time_var"]
+        for idx in range(len(jobs))
+    )
+    +
+    # Minimize the earliness
+    sum(
+        jobs[idx]["earliness_weight"] * jobs[idx]["earliness_var"]
         for idx in range(len(jobs))
     )
 )
@@ -313,9 +344,15 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
         for idx in range(len(jobs)):
             job = jobs[idx]
             job["start_time"] = solver.value(job["start_time_var"])
+            job["completion_time"] = solver.value(job["completion_time_var"])
+            job["flow_time"] = solver.value(job["flow_time_var"])
+            job["earliness"] = solver.value(job["earliness_var"])
             # Get rid of variables in our job dictionary before output
             job.pop("start_time_var", None)
             job.pop("interval_vars", None)
+            job.pop("completion_time_var", None)
+            job.pop("flow_time_var", None)
+            job.pop("earliness_var", None)
 
         # Output solution formatted as csv
         writer = csv.DictWriter(sys.stdout, fieldnames=jobs[0].keys())

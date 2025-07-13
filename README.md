@@ -1,16 +1,17 @@
-# $1|r_j;prec|\sum w_j C_j$ Periodic Scheduling
+# Periodic Scheduling
 
-This repository serves to provide utilities for creating, verifying, and visualizing [periodic](https://epubs.siam.org/doi/abs/10.1137/0402049) [scheduling problems](https://en.wikipedia.org/wiki/Optimal_job_scheduling) (PSP) / periodic event scheduling problems (PESP). In particular, the scheduling problem being solved here is defined as $1|r_j;prec|\sum w_j C_j$ according to the [$\alpha|\beta|\gamma$ scheduling notation](https://en.wikipedia.org/w/index.php?title=Notation_for_theoretic_scheduling_problems) and has the following characteristics:
+This repository serves to provide utilities for creating, verifying, and visualizing [periodic](https://epubs.siam.org/doi/abs/10.1137/0402049) [scheduling problems](https://en.wikipedia.org/wiki/Optimal_job_scheduling) (PSP) / periodic event scheduling problems (PESP). In particular, the scheduling problem being solved here is defined as $1|r_j;prec|\sum w^c_j C_j + \sum w^f_j F_j + \sum w^e_j E_j$ according to the [$\alpha|\beta|\gamma$ scheduling notation](https://en.wikipedia.org/w/index.php?title=Notation_for_theoretic_scheduling_problems) and has the following [machine environment](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Machine_environments), [job characteristics](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Job_characteristics), and [objective functions](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Objective_functions):
 
-* single stage
-* [single machine](https://en.wikipedia.org/wiki/Single-machine_scheduling)
-* arbitrary processing times
-* arbitrary release times
-* arbitrary due dates
-* precedence relations
-* arbitrary time lags
-* arbitrary slack times $^1$
-* minimize a weighted sum of completion times
+* $1$: single stage, [single machine](https://en.wikipedia.org/wiki/Single-machine_scheduling)
+* $p_j$: arbitrary processing times
+* $r_j$: arbitrary release times
+* $\bar{d}_j$: arbitrary deadlines
+* $prec$: precedence relations
+* $l_{ij}$: arbitrary time lags
+* $s_{ij}$: arbitrary slack times $^1$
+* $\text{min} \sum w^c_j C_j$: minimize a weighted sum of completion times
+* $\text{min} \sum w^f_j F_j$: minimize a weighted sum of flow times
+* $\text{min} \sum w^e_j E_j$: minimize a weighted sum of earliness
 * periodic
 
 $^1$ The slack time between two jobs is the amount of time in which the second job must be started after the first job is completed. Formally, if job $i$ precedes job $j$, then $C_i + s_{ij} \geq S_j$ must be true. $C_i$ is the completion time of job $i$, $s_{ij}$ is the slack time job $j$ is allowed following job $i$, and $S_j$ is the start time of job $j$.
