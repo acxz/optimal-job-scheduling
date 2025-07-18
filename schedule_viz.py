@@ -24,8 +24,8 @@ args = parser.parse_args()
 schedule_file = sys.stdin if args.schedule == "-" else args.schedule
 jobs = pd.read_csv(schedule_file)
 
-# Ensure the name is a string
-jobs["name"] = jobs["name"].apply(lambda value: str(value))
+# Ensure the job_name is a string
+jobs["job_name"] = jobs["job_name"].apply(lambda value: str(value))
 
 
 # Populate a schedule with periodic job instances
@@ -61,14 +61,14 @@ color_idx = 0
 
 # Create traces for each job
 traces = []
-for name in schedule["name"].unique():
-    job_schedule = schedule[schedule["name"] == name]
+for job_name in schedule["job_name"].unique():
+    job_schedule = schedule[schedule["job_name"] == job_name]
 
     traces.append(
         go.Bar(
-            name=name,
+            name=job_name,
             base=job_schedule["start_time"],
-            x=job_schedule["processing_time"],
+            x=job_schedule["processing_times"],
             y=job_schedule["machine"],
             error_x=dict(
                 type="data",
@@ -86,19 +86,18 @@ for name in schedule["name"].unique():
             + "release_time=%{customdata[9]}<br>"
             + "deadline=%{customdata[10]}<br>"
             + "<extra>"
-            + "name=%{customdata[0]}<br>"
+            + "job_name=%{customdata[0]}<br>"
             + "period=%{customdata[1]}<br>"
-            + "processing_time=%{customdata[2]}<br>"
+            + "processing_times=%{customdata[2]}<br>"
             + "flow_time=%{customdata[3]}<br>"
             + "earliness=%{customdata[4]}<br>"
-            + "predecessors=%{customdata[11]}<br>"
             + "machine=%{customdata[5]}"
             + "</extra>",
             customdata=job_schedule[
                 [
-                    "name",
+                    "job_name",
                     "period",
-                    "processing_time",
+                    "processing_times",
                     "flow_time",
                     "earliness",
                     "machine",
@@ -107,7 +106,6 @@ for name in schedule["name"].unique():
                     "completion_time",
                     "release_time",
                     "deadline",
-                    "predecessors",
                 ]
             ],
             orientation="h",
