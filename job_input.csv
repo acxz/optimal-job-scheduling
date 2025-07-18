@@ -1,0 +1,6 @@
+job_name,period,start_time,machine_name,processing_times,release_time,deadline,time_lags,slack_times,completion_time_weight,flow_time_weight,earliness_weight
+j1,20,,,"{'m1': 5}",,,,,1,,
+j2,40,,m2,5,,15,,,,,
+j3,40,,m1,"{'m1': 1, 'm2': 3}",10,20,,"{'j2': 0}",,,
+j4,20,,,"{'m1': 1}",,,"{'j1': 5, 'j2': 0}","{'j1': 10}",-1,,
+j5,30,,,"{'m2': 3}",,,,,,,

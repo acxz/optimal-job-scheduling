@@ -24,8 +24,8 @@ args = parser.parse_args()
 schedule_file = sys.stdin if args.schedule == "-" else args.schedule
 jobs = pd.read_csv(schedule_file)
 
-# Ensure the name is a string
-jobs["name"] = jobs["name"].apply(lambda value: str(value))
+# Ensure the job_name is a string
+jobs["job_name"] = jobs["job_name"].apply(lambda value: str(value))
 
 
 # Populate a schedule with periodic job instances
@@ -34,7 +34,6 @@ def create_job_instances(record):
     for instance_idx in range(int(record["instances"])):
         job_instance = pd.DataFrame(record).transpose()
         job_instance["instance"] = instance_idx + 1
-        job_instance["machine"] = str(1)
         job_instance["start_time"] = (
             instance_idx * job_instance["period"] + job_instance["start_time"]
         )
@@ -61,15 +60,15 @@ color_idx = 0
 
 # Create traces for each job
 traces = []
-for name in schedule["name"].unique():
-    job_schedule = schedule[schedule["name"] == name]
+for job_name in schedule["job_name"].unique():
+    job_schedule = schedule[schedule["job_name"] == job_name]
 
     traces.append(
         go.Bar(
-            name=name,
+            name=job_name,
             base=job_schedule["start_time"],
             x=job_schedule["processing_time"],
-            y=job_schedule["machine"],
+            y=job_schedule["machine_name"],
             error_x=dict(
                 type="data",
                 symmetric=False,
@@ -86,28 +85,26 @@ for name in schedule["name"].unique():
             + "release_time=%{customdata[9]}<br>"
             + "deadline=%{customdata[10]}<br>"
             + "<extra>"
-            + "name=%{customdata[0]}<br>"
+            + "job_name=%{customdata[0]}<br>"
             + "period=%{customdata[1]}<br>"
             + "processing_time=%{customdata[2]}<br>"
             + "flow_time=%{customdata[3]}<br>"
             + "earliness=%{customdata[4]}<br>"
-            + "predecessors=%{customdata[11]}<br>"
-            + "machine=%{customdata[5]}"
+            + "machine_name=%{customdata[5]}"
             + "</extra>",
             customdata=job_schedule[
                 [
-                    "name",
+                    "job_name",
                     "period",
                     "processing_time",
                     "flow_time",
                     "earliness",
-                    "machine",
+                    "machine_name",
                     "instance",
                     "start_time",
                     "completion_time",
                     "release_time",
                     "deadline",
-                    "predecessors",
                 ]
             ],
             orientation="h",
@@ -139,7 +136,7 @@ for period in schedule["period"].unique():
     # Create a button for showing jobs only with a particular period/showing all jobs
     period_buttons.append(
         dict(
-            label="Only Show Period: " + str(period),
+            label="Toggle All/Period: " + str(period),
             method="restyle",
             args=[
                 {
@@ -188,7 +185,7 @@ layout = go.Layout(
     title_text="Schedule",
     legend_title_text="Job",
     xaxis_title_text="Time",
-    yaxis_title_text="Machine",
+    yaxis_title_text="Machines",
     barmode="overlay",  # overlay each job to visualize conflicts if any
     xaxis=dict(rangeslider=dict(visible=True), type="linear"),  # add range slider
     # Add menus for time constraints and jobs grouped by period
