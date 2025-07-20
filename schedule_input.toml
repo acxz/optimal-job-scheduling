@@ -1,0 +1,58 @@
+[machines.m1]
+
+[machines.m2]
+speed = 1
+setup_time = 1
+teardown_time = 1
+
+[jobs.j1]
+period = 20
+start_time = 0
+processing_times.m1 = 5
+completion_time_weight = 1
+
+[jobs.j2]
+period = 40
+machine_name = "m2"
+processing_times = 5
+deadline = 15
+
+[jobs.j3]
+period = 40
+machine_name = "m1"
+processing_times.m1 = 1
+processing_times.m2 = 3
+release_time = 10
+deadline = 20
+slack_times.j2 = 0
+
+[jobs.j4]
+period = 20
+processing_times.m1 = 1
+time_lags.j1 = 5
+time_lags.j2 = 0
+slack_times.j1 = 10
+completion_time_weight = -1
+
+[jobs.j5]
+period = 30
+machine_name = "m2"
+processing_times.m1 = 3
+processing_times.m2 = 3
+
+# [machines.machine_name]
+# speed
+# setup_time
+# teardown_time
+# [jobs.job_name]
+# period
+# start_time
+# machine_name
+# processing_times
+# release_time
+# deadline
+# time_lags
+# slack_times
+# completion_time_weight
+# flow_time_weight
+# earliness_weight

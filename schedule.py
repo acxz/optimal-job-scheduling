@@ -10,6 +10,7 @@ import ast
 import csv
 import math
 import sys
+import tomllib
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -17,98 +18,81 @@ parser.add_argument(
     type=str,
     nargs="?",
     default="-",  # use "-" to denote stdin by convention
-    help="csv of jobs specifying their characteristics. If all start times are specified, then the start times are checked for.",
+    help="toml of machines and jobs specifying their characteristics. If all start times and machines are specified, then the start times and machines are checked for.",
 )
+
+# TODO: Describe input in detail for each field in help
+# i.e. possible values, default values, and what if left blank
+# Single Machine Scheduling (1): Single processing time is provided for all jobs, with no input machine csv
+# Identical Machine Scheduling (P): Single processing time is provided for all jobs, with an input machine csv
+# Uniform Machine Scheduling (Q): Single processing time is provided for all jobs, with an input machine csv specifying speed
+# Unrelated Machine Scheduling (R): Multiple processing times provided for all jobs, with an input machine csv
+
 args = parser.parse_args()
-job_file = sys.stdin if args.input == "-" else open(args.input)
-reader = csv.DictReader(job_file)
+schedule_input_file = sys.stdin.buffer if args.input == "-" else open(args.input, "rb")
+schedule_input = tomllib.load(schedule_input_file)
 
-# TODO: use toml instead of csv, will ensure we can have both machines and job characteristics in one file
-# machine_file = ["machine_name,speed,setup_time", "machine,,"]
-machine_file = ["machine_name,speed,setup_time", "m1,,", "m2,,1"]
-machine_reader = csv.DictReader(machine_file)
+# Populate machines with a single machine if not specified
+if "machines" not in schedule_input.keys():
+    schedule_input["machines"] = {"machine": {}}
 
-machines = {}
-has_speed = "speed" in machine_reader.fieldnames
-has_setup_time = "setup_time" in machine_reader.fieldnames
-
-for row in machine_reader:
-    machines[row["machine_name"]] = {
-        "machine_name": row["machine_name"],
-        "speed": int(row["speed"]) if has_speed and row["speed"] != "" else 1,
-        "setup_time": int(row["setup_time"])
-        if has_setup_time and row["setup_time"] != ""
-        else 0,
-        # Variable to check for overlap
-        "interval_vars": [],
-    }
-
-jobs = {}
-
-has_period = "period" in reader.fieldnames
-has_start_time = "start_time" in reader.fieldnames
-has_machine_name = "machine_name" in reader.fieldnames
-has_processing_times = "processing_times" in reader.fieldnames
-has_release_time = "release_time" in reader.fieldnames
-has_deadline = "deadline" in reader.fieldnames
-has_time_lags = "time_lags" in reader.fieldnames
-has_slack_times = "slack_times" in reader.fieldnames
-has_completion_time_weight = "completion_time_weight" in reader.fieldnames
-has_flow_time_weight = "flow_time_weight" in reader.fieldnames
-has_earliness_weight = "earliness_weight" in reader.fieldnames
-
-for row in reader:
-    # Single Machine Scheduling (1): Single processing time is provided for all jobs, with no input machine csv
-    # Identical Machine Scheduling (P): Single processing time is provided for all jobs, with an input machine csv
-    # Uniform Machine Scheduling (Q): Single processing time is provided for all jobs, with an input machine csv specifying speed
-    # Unrelated Machine Scheduling (R): Multiple processing times provided for all jobs, with an input machine csv
-
-    # Create processing times based on input processing times and machine input
-    processing_times = (
-        ast.literal_eval(row["processing_times"])
-        if has_processing_times and row["processing_times"] != ""
-        else 1
+# Check that at least one job is specified
+if "jobs" not in schedule_input.keys() and len(schedule_input["jobs"]) == 0:
+    print(
+        f"No jobs specified!",
+        file=sys.stderr,
     )
+    sys.exit()
+
+# Parse in machines and jobs from schedule input
+machines = schedule_input["machines"]
+jobs = schedule_input["jobs"]
+
+# Set default values and variables to solve for machines
+for machine in machines.values():
+    if "speed" not in machine.keys():
+        machine["speed"] = 1
+    if "setup_time" not in machine.keys():
+        machine["setup_time"] = 0
+    if "teardown_time" not in machine.keys():
+        machine["teardown_time"] = 0
+    # Variable to check for job overlap
+    machine["interval_vars"] = []
+
+for job in jobs.values():
+    # Create processing times based on input processing times and machine input
+    if "processing_times" not in job.keys():
+        job["processing_times"] = 1
     # If input processing times is integer, apply that processing time to all machines
-    if isinstance(processing_times, int):
-        processing_time = processing_times
-        processing_times = {
+    if isinstance(job["processing_times"], int):
+        processing_time = job["processing_times"]
+        job["processing_times"] = {
             machine_name: processing_time for machine_name in machines.keys()
         }
 
-    jobs[row["job_name"]] = {
-        "job_name": row["job_name"],
-        # At least one period must be specified
-        "period": int(row["period"]) if has_period and row["period"] != "" else None,
-        "start_time": int(row["start_time"])
-        if has_start_time and row["start_time"] != ""
-        else None,
-        "machine_name": row["machine_name"]
-        if has_machine_name and row["machine_name"] != ""
-        else None,
-        "processing_times": processing_times,
-        "release_time": int(row["release_time"])
-        if has_release_time and row["release_time"] != ""
-        else None,
-        "deadline": int(row["deadline"])
-        if has_deadline and row["deadline"] != ""
-        else None,
-        "time_lags": ast.literal_eval(row["time_lags"])
-        if has_time_lags and row["time_lags"] != ""
-        else None,
-        "slack_times": ast.literal_eval(row["slack_times"])
-        if has_slack_times and row["slack_times"] != ""
-        else None,
-        "completion_time_weight": int(row["completion_time_weight"])
-        if has_completion_time_weight and row["completion_time_weight"] != ""
-        else 0,
-        "flow_time_weight": int(row["flow_time_weight"])
-        if has_flow_time_weight and row["flow_time_weight"] != ""
-        else 0,
-        "earliness_weight": int(row["earliness_weight"])
-        if has_earliness_weight and row["earliness_weight"] != ""
-        else 0,
-        # variables to solve for
+    if "period" not in job.keys():
+        job["period"] = None
+    if "start_time" not in job.keys():
+        job["start_time"] = None
+    if "machine_name" not in job.keys():
+        job["machine_name"] = None
+    if "release_time" not in job.keys():
+        job["release_time"] = None
+    if "deadline" not in job.keys():
+        job["deadline"] = None
+    if "time_lags" not in job.keys():
+        job["time_lags"] = None
+    if "slack_times" not in job.keys():
+        job["slack_times"] = None
+    if "completion_time_weight" not in job.keys():
+        job["completion_time_weight"] = 0
+    if "flow_time_weight" not in job.keys():
+        job["flow_time_weight"] = 0
+    if "earliness_weight" not in job.keys():
+        job["earliness_weight"] = 0
+
+    # Variables to solve for
+    job |= {
         "start_time_var": None,
         "machine_name_var": None,
         "processing_time_var": None,
@@ -136,8 +120,20 @@ for job_name, job in jobs.items():
                 file=sys.stderr,
             )
             input_error = True
-    # If the machine is not specified and there is only one machine/processing time pair specified, then job must run on that machine if machine exists
+    # If the machine is not specified
     else:
+        # If there is only one machine and if there is a processing time associated with it, then job must run on that machine
+        if len(machines) == 1:
+            machine_name = list(machines.keys())[0]
+            if machine_name in job["processing_times"].keys():
+                job["machine_name"] = machine_name
+            else:
+                print(
+                    f"Job {job_name} is not specified to run on the sole machine {machine_name}!",
+                    file=sys.stderr,
+                )
+                input_error = True
+        # If there is only one machine/processing time pair specified, then job must run on that machine if machine exists
         if len(job["processing_times"]) == 1:
             processing_machine_name = list(job["processing_times"].keys())[0]
             if processing_machine_name in machines.keys():
@@ -184,6 +180,7 @@ periods = [job["period"] for job in jobs.values() if job["period"] is not None]
 hyper_period = math.lcm(*periods)
 
 # Assign the period of non-periodic jobs as the hyper-period
+# FIXME: This does not account for the case where a second non-periodic job needs to occur in the second hyper-period
 for job in jobs.values():
     if job["period"] is None:
         job["period"] = hyper_period
@@ -198,7 +195,9 @@ for job_name, job in jobs.items():
     # Determine the processing time of a job based on the machine it is run on
     if job["machine_name"] is None:
         # TODO: need to reify based on machine id, index constraint?
-        sys.exit("Auto-Scheduling on multiple machines not supported yet!")
+        sys.exit(
+            f"Auto-Scheduling on multiple machines not supported yet! Constrain job {job_name} to a specific machine!"
+        )
     else:
         # TODO: this will need to be a reified variable to determine processing time based on machine
         job["processing_time_var"] = job["processing_times"][job["machine_name"]]
@@ -239,11 +238,17 @@ for job_name, job in jobs.items():
         )
         job["interval_vars"].append(job_instance_interval_var)
 
-    # Add job interval vars to its assigned machine's interval vars
-    # TODO: Reify on machine_name_var for machine scheduling
-    machines[job["machine_name_var"]]["interval_vars"] = (
-        machines[job["machine_name_var"]]["interval_vars"] + job["interval_vars"]
-    )
+        # Add job instance interval var to its assigned machine's interval vars
+        # accounting for setup time and teardown time
+        # TODO: Reify on machine_name_var for machine scheduling
+        machine_name = job["machine_name_var"]
+        machine = machines[job["machine_name_var"]]
+        machine_job_instance_interval_var = model.new_fixed_size_interval_var(
+            job["start_time_var"] + instance_idx * job["period"] - machine["setup_time"],
+            job["processing_time_var"] + machine["teardown_time"],
+            f"{machine_name}_job_{job_name}_instance_{instance_idx}_interval",
+        )
+        machines[job["machine_name_var"]]["interval_vars"].append(machine_job_instance_interval_var)
 
 # Add no overlap for intervals on the same machine
 for machine_name, machine in machines.items():
@@ -399,7 +404,7 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
     else:
         print("Feasible schedule found.", file=sys.stderr)
 
-    for job in jobs.values():
+    for job_name, job in jobs.items():
         job["start_time"] = solver.value(job["start_time_var"])
         job["machine_name"] = job["machine_name_var"]
         job["processing_time"] = solver.value(job["processing_time_var"])
@@ -414,6 +419,8 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
             if job["earliness_var"] is not None
             else None
         )
+        job["job_name"] = job_name
+
         # Get rid of variables in our job dictionary before output
         job.pop("start_time_var", None)
         job.pop("machine_name_var", None)

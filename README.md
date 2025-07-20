@@ -25,19 +25,21 @@ The term is based on [project management terminology](https://en.wikipedia.org/w
 
 ## `schedule.py`
 
-This script attempts to find a feasible schedule based on the parameters of the problem. The parameters are specified as csv via [standard input (stdin)](https://en.wikipedia.org/wiki/Standard_streams#Standard_input_(stdin)). If a feasible schedule exists, an output csv is created with the start times that have been solved for as well as the input parameters. This output can be visualized with the `schedule_viz.py` script. If the start times are all specified, the script verifies if the schedule is feasible.
+This script attempts to find a feasible schedule based on the parameters of the problem. The parameters are specified as [toml](https://toml.io) via [standard input (stdin)](https://en.wikipedia.org/wiki/Standard_streams#Standard_input_(stdin)). If a feasible schedule exists, an output [csv](https://www.ietf.org/rfc/rfc4180.txt) is created with the start times that have been solved for as well as the input parameters. This output can be visualized with the `schedule_viz.py` script. If the start times are all specified, the script verifies if the schedule is feasible.
 
 To create or verify a schedule enter the input via stdin.
 For most shells, entering the following in the terminal will work:
 
 ```bash
-uv run schedule.py < schedule_input.csv
+uv run schedule.py < schedule_input.toml
 ```
+
+To signal the end from manual stdin input, make sure to enter `Ctrl-D` on Unix systems and `Ctrl-Z` on Windows.
 
 The output is sent to the [standard output (stdout)](https://en.wikipedia.org/wiki/Standard_streams#Standard_output_(stdout)). To capture the output in a file for most shells, run like so:
 
 ```bash
-uv run schedule.py < schedule_input.csv > schedule_output.csv
+uv run schedule.py < schedule_input.toml > schedule_output.csv
 ```
 
 Note that PowerShell support for stdout is slightly broken. See [this workaround](https://github.com/PowerShell/PowerShell/issues/5974#issuecomment-1297513901).
@@ -84,5 +86,7 @@ Divisors of 20:
 The solver that is used for this tool is OR-Tools' CP-SAT. In order to have a solver agnostic architecture, one can define the problem in [cpmpy](https://github.com/CPMpy/cpmpy).
 
 Debugging an infeasible model is currently not possible, however, this can be done via [assumptions](https://github.com/d-krupke/cpsat-primer?tab=readme-ov-file#assumptions).
+
+As the scheduling problem tends to result in a complex constraint program, having tests to verify the logic is desirable. These tests can also serve as helpful examples.
 
 From a problem space perspective, support for additional scheduling problems, such as ones with multiple machines, multi-stage jobs, preemption, other objectives, etc. can be added. This can be done by allowing the user to specify the scheduling problem in the three-field notation and provide the schedule problem data, from which the script can construct the appropriate variables, constraints, and objectives for the solver. Note that such a tool does not exist currently and probably hasn't existed yet due to the fact that domain specific scheduling problems are typically constructed directly in the model rather than in three-field notation.
