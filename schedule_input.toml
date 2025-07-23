@@ -40,6 +40,11 @@ machine_name = "m2"
 processing_times.m1 = 3
 processing_times.m2 = 3
 
+[jobs.j6]
+period = 120
+start_time = 119
+processing_times.m2 = 2
+
 # [machines.machine_name]
 # speed
 # setup_time

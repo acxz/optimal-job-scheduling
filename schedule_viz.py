@@ -31,14 +31,21 @@ jobs["job_name"] = jobs["job_name"].apply(lambda value: str(value))
 # Populate a schedule with periodic job instances
 def create_job_instances(record):
     job_instances = pd.DataFrame()
-    for instance_idx in range(int(record["instances"])):
+
+    instance_idx_range = range(int(record["instances"]))
+    # If a job wraps around its period, plot another job instance that captures the job instance in the previous period
+    if record["completion_time"] < record["start_time"]:
+        # Ensure that the range includes a negative 1 instance index to capture the instance from the previous period
+        instance_idx_range = range(-1, int(record["instances"]))
+
+    for instance_idx in instance_idx_range:
         job_instance = pd.DataFrame(record).transpose()
         job_instance["instance"] = instance_idx + 1
         job_instance["start_time"] = (
             instance_idx * job_instance["period"] + job_instance["start_time"]
         )
         job_instance["completion_time"] = (
-            instance_idx * job_instance["period"] + job_instance["completion_time"]
+            job_instance["start_time"] + job_instance["processing_time"]
         )
         job_instance["release_time"] = (
             instance_idx * job_instance["period"] + job_instance["release_time"]
@@ -66,6 +73,7 @@ for job_name in schedule["job_name"].unique():
     traces.append(
         go.Bar(
             name=job_name,
+            text=job_name,
             base=job_schedule["start_time"],
             x=job_schedule["processing_time"],
             y=job_schedule["machine_name"],

@@ -96,7 +96,7 @@ for job in jobs.values():
         "start_time_var": None,
         "machine_name_var": None,
         "processing_time_var": None,
-        "interval_vars": [],
+        "completion_time_var": None,
     }
 
 # Flag to exit after checking input
@@ -215,40 +215,90 @@ for job_name, job in jobs.items():
     else:
         job["start_time_var"] = model.new_constant(job["start_time"])
 
-    # TODO: Jobs wrapping around its period is not yet supported
-    # Would need to reify on the below condition, and create two intervals to check no_overlap
-    model.add(job["start_time_var"] <= job["period"] - job["processing_time_var"])
+    # Define the completion time variable that handles a job wrapping around its period with a modulo equality
+    job["completion_time_var"] = model.new_int_var(
+        0, job["period"], f"{job_name}_completion_time"
+    )
+    # Variable to keep track if the interval for a particular job instance wraps around the period
+    job_wrapped = model.new_bool_var(f"{job_name}_wrap")
+
+    # TODO: Reify on machine_name_var for machine scheduling
+    machine_name = job["machine_name_var"]
+    machine = machines[job["machine_name_var"]]
+
+    # Ensure the completion time is equal to start time plus processing time, while accounting for wrapping around the start of its period
+    # Note: It is important to understand when to use job["start_time_var"] + job["processing_time_var"] vs job["completion_time_var"]
+    # as both represent the completion time, but the first represents the completion time of the job that has started in the current period,
+    # while the second one represents the completion time of the job that started in the previous period
+    model.add_modulo_equality(
+        job["completion_time_var"],
+        job["start_time_var"] + job["processing_time_var"],
+        job["period"],
+    )
+
+    # If the job has wrapped around its period, the start time must occur before the completion time
+    # Otherwise the start time must be after the completion time
+    # Account for the machine's setup time and teardown time
+    model.add(
+        job["start_time_var"] - machine["setup_time"]
+        < job["completion_time_var"] + machine["teardown_time"]
+    ).only_enforce_if(~job_wrapped)
+    model.add(
+        job["start_time_var"] - machine["setup_time"]
+        > job["completion_time_var"] + machine["teardown_time"]
+    ).only_enforce_if(job_wrapped)
 
     # Ensure the release time and deadline are respected
     # In this context of periodicity, release time and deadline are defined as
-    # a time within the job's first period
+    # a time within the job's period
     if job["release_time"] is not None:
         model.add(job["start_time_var"] >= job["release_time"])
 
     if job["deadline"] is not None:
-        model.add(job["start_time_var"] + job["processing_time_var"] <= job["deadline"])
+        # Note that we use job["completion_time_var"] and not job["start_time_var"] + job["processing_time_var"]
+        # since the deadline is defined within the period
+        model.add(job["completion_time_var"] <= job["deadline"])
 
     for instance_idx in range(job["instances"]):
-        # An interval variable for each instance of the job during the cycle is
-        # created to ensure no interval overlap
-        job_instance_interval_var = model.new_fixed_size_interval_var(
-            job["start_time_var"] + instance_idx * job["period"],
-            job["processing_time_var"],
-            f"{job_name}_instance_{instance_idx}_interval",
-        )
-        job["interval_vars"].append(job_instance_interval_var)
-
         # Add job instance interval var to its assigned machine's interval vars
         # accounting for setup time and teardown time
-        # TODO: Reify on machine_name_var for machine scheduling
-        machine_name = job["machine_name_var"]
-        machine = machines[job["machine_name_var"]]
-        machine_job_instance_interval_var = model.new_fixed_size_interval_var(
-            job["start_time_var"] + instance_idx * job["period"] - machine["setup_time"],
+
+        # These are optional interval variables based on if the interval does not wrap around the period or does
+        machine_job_instance_interval_var = model.new_optional_fixed_size_interval_var(
+            job["start_time_var"]
+            + instance_idx * job["period"]
+            - machine["setup_time"],
             job["processing_time_var"] + machine["teardown_time"],
+            ~job_wrapped,
             f"{machine_name}_job_{job_name}_instance_{instance_idx}_interval",
         )
-        machines[job["machine_name_var"]]["interval_vars"].append(machine_job_instance_interval_var)
+
+        # Split the wrapped interval into two
+        machine_job_instance_wrap_before_interval_var = model.new_optional_fixed_size_interval_var(
+            job["start_time_var"]
+            + instance_idx * job["period"]
+            - machine["setup_time"],
+            job["period"],
+            job_wrapped,
+            f"{machine_name}_job_{job_name}_instance_{instance_idx}_wrap_before_interval",
+        )
+        machine_job_instance_wrap_after_interval_var = model.new_optional_fixed_size_interval_var(
+            0,
+            job["completion_time_var"]
+            + instance_idx * job["period"]
+            + machine["teardown_time"],
+            job_wrapped,
+            f"{machine_name}_job_{job_name}_instance_{instance_idx}_wrap_after_interval",
+        )
+        machines[job["machine_name_var"]]["interval_vars"].append(
+            machine_job_instance_interval_var
+        )
+        machines[job["machine_name_var"]]["interval_vars"].append(
+            machine_job_instance_wrap_before_interval_var
+        )
+        machines[job["machine_name_var"]]["interval_vars"].append(
+            machine_job_instance_wrap_after_interval_var
+        )
 
 # Add no overlap for intervals on the same machine
 for machine_name, machine in machines.items():
@@ -284,18 +334,15 @@ for successor_job_name, successor_job in jobs.items():
                     # Reify the time lag constraint
                     # 1st condition: Ensure the predecessor instance occurs before the successor instance
                     model.add(
-                        predecessor_job["start_time_var"]
+                        predecessor_job["completion_time_var"]
                         + predecessor_instance_idx * predecessor_job["period"]
-                        + predecessor_job["processing_time_var"]
                         <= successor_job["start_time_var"]
                         + successor_instance_idx * successor_job["period"]
                     ).only_enforce_if(lag_satisfied)
                     # 2st condition: Ensure the successor instance occurs before the next predecessor instance in the successor instance's period
                     model.add(
                         successor_job["start_time_var"]
-                        >= predecessor_job["start_time_var"]
-                        + predecessor_job["processing_time_var"]
-                        + successor_time_lag
+                        >= predecessor_job["completion_time_var"] + successor_time_lag
                     ).only_enforce_if(lag_satisfied)
 
                 # Ensure that at least one predecessor instance satisfies the time lag constraint
@@ -326,9 +373,8 @@ for successor_job_name, successor_job in jobs.items():
                         # Reify the slack time constraint
                         # 1st condition: Ensure the predecessor instance occurs before the successor instance
                         model.add(
-                            predecessor_job["start_time_var"]
+                            predecessor_job["completion_time_var"]
                             + predecessor_instance_idx * predecessor_job["period"]
-                            + predecessor_job["processing_time_var"]
                             <= successor_job["start_time_var"]
                             + successor_instance_idx * successor_job["period"]
                         ).only_enforce_if(slack_satisfied)
@@ -336,9 +382,8 @@ for successor_job_name, successor_job in jobs.items():
                         model.add(
                             successor_job["start_time_var"]
                             + successor_instance_idx * successor_job["period"]
-                            <= predecessor_job["start_time_var"]
+                            <= predecessor_job["completion_time_var"]
                             + predecessor_instance_idx * predecessor_job["period"]
-                            + predecessor_job["processing_time_var"]
                             + successor_slack_time
                         ).only_enforce_if(slack_satisfied)
 
@@ -352,9 +397,8 @@ for successor_job_name, successor_job in jobs.items():
 
 # Define intermediary variables for the objective function
 for job in jobs.values():
-    job["completion_time_var"] = job["start_time_var"] + job["processing_time_var"]
     job["flow_time_var"] = (
-        job["completion_time_var"] - job["release_time"]
+        job["start_time_var"] + job["processing_time_var"] - job["release_time"]
         if job["release_time"] is not None
         else None
     )
@@ -425,7 +469,6 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
         job.pop("start_time_var", None)
         job.pop("machine_name_var", None)
         job.pop("processing_time_var", None)
-        job.pop("interval_vars", None)
         job.pop("completion_time_var", None)
         job.pop("flow_time_var", None)
         job.pop("earliness_var", None)
