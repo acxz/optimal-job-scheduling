@@ -122,7 +122,7 @@ for job_name in schedule["job_name"].unique():
             ],  # specify colors manually to match error colors
         )
     )
-    color_idx = color_idx + 1
+    color_idx = (color_idx + 1) % len(colors)
 
 # Create button for showing/hiding time constraints
 time_constraint_button = dict(
@@ -131,12 +131,63 @@ time_constraint_button = dict(
     args=[{"error_x.visible": True}],
     args2=[{"error_x.visible": False}],
 )
-time_constraint_menu = dict(
-    type="buttons", buttons=[time_constraint_button], yanchor="bottom"
-)
+time_constraint_menu = dict(type="buttons", buttons=[time_constraint_button])
+
+# Create a dropdown for showing jobs grouped by machine
+# For reference: https://stackoverflow.com/questions/65941253/plotly-how-to-toggle-traces-with-a-button-similar-to-clicking-them-in-legend
+machine_buttons = []
+for machine_name in schedule["machine_name"].unique():
+    machine_schedule = schedule[schedule["machine_name"] == machine_name]
+
+    # Create a button for showing jobs only with a particular machine/showing all jobs
+    machine_buttons.append(
+        dict(
+            label="Toggle All/Machine: " + machine_name,
+            method="restyle",
+            args=[
+                {
+                    "visible": [
+                        True
+                        if (trace.customdata[:, 5] == machine_name).all()
+                        else "legendonly"
+                        for trace in traces
+                    ]
+                }
+            ],
+            args2=[
+                {"visible": True},
+                [trace_idx for trace_idx, trace in enumerate(traces)],
+            ],
+        )
+    )
+
+    # Create a button for showing/hiding jobs grouped by machine
+    machine_buttons.append(
+        dict(
+            label="Toggle Machine: " + machine_name,
+            method="restyle",
+            args=[
+                {"visible": True},
+                [
+                    trace_idx
+                    for trace_idx, trace in enumerate(traces)
+                    if (trace.customdata[:, 5] == machine_name).all()
+                ],
+            ],
+            args2=[
+                {"visible": "legendonly"},
+                [
+                    trace_idx
+                    for trace_idx, trace in enumerate(traces)
+                    if (trace.customdata[:, 5] == machine_name).all()
+                ],
+            ],
+        )
+    )
+
+machine_menu = dict(type="dropdown", buttons=machine_buttons, y=0.9)
 
 # Create a dropdown for showing jobs grouped by period
-# For reference: https://stackoverflow.com/questions/65941253/plotly-how-to-toggle-traces-with-a-button-similar-to-clicking-them-in-legend
 period_buttons = []
 for period in schedule["period"].unique():
     period_schedule = schedule[schedule["period"] == period]
@@ -187,7 +238,7 @@ for period in schedule["period"].unique():
         )
     )
 
-period_menu = dict(type="dropdown", buttons=period_buttons)
+period_menu = dict(type="dropdown", buttons=period_buttons, y=0.8)
 
 layout = go.Layout(
     title_text="Schedule",
@@ -196,8 +247,8 @@ layout = go.Layout(
     yaxis_title_text="Machines",
     barmode="overlay",  # overlay each job to visualize conflicts if any
     xaxis=dict(rangeslider=dict(visible=True), type="linear"),  # add range slider
-    # Add menus for time constraints and jobs grouped by period
-    updatemenus=[time_constraint_menu, period_menu],
+    # Add menus for time constraints, jobs grouped by machine, and jobs grouped by period
+    updatemenus=[time_constraint_menu, machine_menu, period_menu],
 )
 
 fig = go.Figure(data=traces, layout=layout)

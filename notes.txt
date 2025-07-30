@@ -1,39 +1,13 @@
-## Syntax for multiple machine scheduling
-
-job, processing_times
-a, p_j             # job a can be performed on all machines at the same proc time
-b, p_j1, p_j2      # job b can be performed on all machines at different speeds
-c, p_j1, None      # job c can be performed on some machines
-
-if we allow the case for job a, then there may be a case where we do not know the number of machines in our problem
-disallow job a style input?
-
 ## Syntax for preemption
 
 simply add a preemptible column, True or False
 
 job can be preemptible until its deadline, if no deadline then its next instance
 
-with preemption the time lag and the slack time constraints we had would need analogous versions on the completion time variable
-as maybe a job needs to complete in certain conditions
-
 ## Constraints for preemption
 
 One way is to treat each job instance as a group of intervals of unit length, where some intervals can be optional.
 The sum of the intervals must be equal to the processing time. The duration of a job instance would then be completion_time - start_time.
-
-## Job wrapping
-
-Add the ability to wrap a job around the end of its period. i.e.
-
-job x and job o have period of 2 and processing time of 2
-job o has start time of 1
-job x has start time of 3
-0: x 
-1: o
-2: o
-3: x
-Can the model come up with this solution?
 
 ## Predecessor outputs
 
