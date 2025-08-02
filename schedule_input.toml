@@ -14,7 +14,7 @@ completion_time_weight = 1
 [jobs.j2]
 period = 40
 machine_name = "m2"
-processing_times = 5
+processing_times = 3
 deadline = 15
 
 [jobs.j3]
@@ -39,8 +39,15 @@ period = 30
 machine_name = "m2"
 processing_times.m1 = 3
 processing_times.m2 = 3
+time_lags.j6 = 10
+slack_times.j6 = 10
 
 [jobs.j6]
+period = 30
+processing_times.m2 = 2
+release_time = 25
+
+[jobs.j7]
 period = 120
 start_time = 119
 processing_times.m2 = 2

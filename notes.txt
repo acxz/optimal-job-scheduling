@@ -38,3 +38,6 @@ can also expand to show the successor's successors and the predecessor's predece
 This would be a really neat visualization and help show the job dependency graph for a single instance
 Could even help identify if a job needs to run at a particular period?
 Or if sporadic instances of the job can be removed from the schedule
+
+# Periodic vs Aperiod
+Ensure that either all jobs have periods or that none of them do.
