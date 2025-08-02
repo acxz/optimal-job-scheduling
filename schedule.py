@@ -32,6 +32,10 @@ args = parser.parse_args()
 schedule_input_file = sys.stdin.buffer if args.input == "-" else open(args.input, "rb")
 schedule_input = tomllib.load(schedule_input_file)
 
+# Populate periodic key if not specified
+if "periodic" not in schedule_input.keys():
+    schedule_input["periodic"] = True
+
 # Populate machines with a single machine if not specified
 if "machines" not in schedule_input.keys():
     schedule_input["machines"] = {"machine": {}}
@@ -44,7 +48,8 @@ if "jobs" not in schedule_input.keys() and len(schedule_input["jobs"]) == 0:
     )
     sys.exit()
 
-# Parse in machines and jobs from schedule input
+# Parse in periodic, machines, and jobs from schedule input
+is_schedule_periodic = schedule_input["periodic"]
 machines = schedule_input["machines"]
 jobs = schedule_input["jobs"]
 
@@ -167,27 +172,41 @@ for job_name, job in jobs.items():
 # Ensure that at least one job has its period specified
 if all([job["period"] is None for job in jobs.values()]):
     print(
-        f"At least one job must have its period specified!",
+        f"At least one job must have its period specified! For non-periodic scheduling simply, treat the period as the max time for your schedule.",
         file=sys.stderr,
     )
     input_error = True
-
-if input_error:
-    sys.exit()
 
 # Compute the hyper-period of the schedule
 periods = [job["period"] for job in jobs.values() if job["period"] is not None]
 hyper_period = math.lcm(*periods)
 
-# Assign the period of non-periodic jobs as the hyper-period
-# FIXME: This does not account for the case where a second non-periodic job needs to occur in the second hyper-period
+# Assign the period of jobs that have none as the hyper-period
+# and obtain the number of instances for each job in the hyper-period
 for job in jobs.values():
     if job["period"] is None:
         job["period"] = hyper_period
-
-# Obtain the number of instances for each job in the hyper-period
-for job in jobs.values():
     job["instances"] = hyper_period // job["period"]
+
+# Ensure that all jobs have the same period (aka max time) if periodic is false
+first_job_period = list(jobs.values())[0]["period"]
+if not is_schedule_periodic:
+    if not all([job["period"] == first_job_period for job in jobs.values()]):
+        print(
+            f"For non-periodic schedules, the periods of each job, if specified, must be the same! At least one period must be specified, you can treat this as the max time for your schedule.",
+            file=sys.stderr,
+        )
+        input_error = True
+
+if input_error:
+    sys.exit()
+
+# For periodic schedules ensure we check with predecessors before the 1st period
+# This allows us to check for precedence relations with the previous period
+if is_schedule_periodic:
+    predecessor_instance_start_idx = -1
+else:
+    predecessor_instance_start_idx = 0
 
 model = cp_model.CpModel()
 
@@ -326,8 +345,9 @@ for successor_job_name, successor_job in jobs.items():
                 # Create list to hold whether a predecessor instance satisfies the time lag constraint for a successor instance
                 predecessor_lag_satisfied = []
 
-                # Make sure to check the precedence relation with any predecessors from its previous period by starting at -1
-                for predecessor_instance_idx in range(-1, predecessor_job["instances"]):
+                for predecessor_instance_idx in range(
+                    predecessor_instance_start_idx, predecessor_job["instances"]
+                ):
                     # Boolean variable to keep track if a particular predecessor job instance satisfies the time lag constraint for a successor job instance
                     lag_satisfied = model.new_bool_var(
                         f"successor_{successor_job_name}_instance_{successor_instance_idx}_predecessor_{predecessor_job_name}_instance_{predecessor_instance_idx}_time_lag"
@@ -368,8 +388,9 @@ for successor_job_name, successor_job in jobs.items():
                 # Create list to hold whether a predecessor instance satisfies the slack time constraint for a successor instance
                 predecessor_slack_satisfied = []
 
-                # Make sure to check the precedence relation with any predecessors from its previous period by starting at -1
-                for predecessor_instance_idx in range(-1, predecessor_job["instances"]):
+                for predecessor_instance_idx in range(
+                    predecessor_instance_start_idx, predecessor_job["instances"]
+                ):
                     # Boolean variable to keep track if a particular predecessor job instance satisfies the slack time constraint for a successor job instance
                     slack_satisfied = model.new_bool_var(
                         f"successor_{successor_job_name}_instance_{successor_instance_idx}_predecessor_{predecessor_job_name}_instance_{predecessor_instance_idx}_slack_time"

@@ -1,3 +1,5 @@
+periodic = true
+
 [machines.m1]
 
 [machines.m2]
@@ -52,6 +54,7 @@ period = 120
 start_time = 119
 processing_times.m2 = 2
 
+# periodic = true/false
 # [machines.machine_name]
 # speed
 # setup_time
