@@ -79,8 +79,8 @@ for job in jobs.values():
         job["period"] = None
     if "start_time" not in job.keys():
         job["start_time"] = None
-    if "machine_name" not in job.keys():
-        job["machine_name"] = None
+    if "machine" not in job.keys():
+        job["machine"] = None
     if "release_time" not in job.keys():
         job["release_time"] = None
     if "deadline" not in job.keys():
@@ -89,6 +89,10 @@ for job in jobs.values():
         job["time_lags"] = None
     if "slack_times" not in job.keys():
         job["slack_times"] = None
+    if "same_machine_jobs" not in job.keys():
+        job["same_machine_jobs"] = None
+    if "different_machine_jobs" not in job.keys():
+        job["different_machine_jobs"] = None
     if "completion_time_weight" not in job.keys():
         job["completion_time_weight"] = 0
     if "flow_time_weight" not in job.keys():
@@ -99,7 +103,7 @@ for job in jobs.values():
     # Variables to solve for
     job |= {
         "start_time_var": None,
-        "machine_name_var": None,
+        "machine_var": None,
         "processing_time_var": None,
         "completion_time_var": None,
     }
@@ -109,19 +113,19 @@ input_error = False
 
 # Ensure that a job can run on the machine specified
 for job_name, job in jobs.items():
-    if job["machine_name"] is not None:
+    if job["machine"] is not None:
         # If the machine is specified, make sure the machine exists
-        if job["machine_name"] not in machines.keys():
+        if job["machine"] not in machines.keys():
             print(
-                f"Job {job_name} is specified to run on machine {job['machine_name']} but that machine is not specified!",
+                f"Job {job_name} is specified to run on machine {job['machine']} but that machine is not specified!",
                 file=sys.stderr,
             )
             input_error = True
 
         # If the machine is specified, key off the machine in the processing times
-        if job["machine_name"] not in job["processing_times"].keys():
+        if job["machine"] not in job["processing_times"].keys():
             print(
-                f"Job {job_name} is specified to run on machine {job['machine_name']} for which a processing time is not specified!",
+                f"Job {job_name} is specified to run on machine {job['machine']} for which a processing time is not specified!",
                 file=sys.stderr,
             )
             input_error = True
@@ -131,7 +135,7 @@ for job_name, job in jobs.items():
         if len(machines) == 1:
             machine_name = list(machines.keys())[0]
             if machine_name in job["processing_times"].keys():
-                job["machine_name"] = machine_name
+                job["machine"] = machine_name
             else:
                 print(
                     f"Job {job_name} is not specified to run on the sole machine {machine_name}!",
@@ -140,12 +144,12 @@ for job_name, job in jobs.items():
                 input_error = True
         # If there is only one machine/processing time pair specified, then job must run on that machine if machine exists
         if len(job["processing_times"]) == 1:
-            processing_machine_name = list(job["processing_times"].keys())[0]
-            if processing_machine_name in machines.keys():
-                job["machine_name"] = processing_machine_name
+            processing_machine = list(job["processing_times"].keys())[0]
+            if processing_machine in machines.keys():
+                job["machine"] = processing_machine
             else:
                 print(
-                    f"Job {job_name} is specified to run on machine {processing_machine_name} but that machine is not specified!",
+                    f"Job {job_name} is specified to run on machine {processing_machine} but that machine is not specified!",
                     file=sys.stderr,
                 )
                 input_error = True
@@ -203,25 +207,22 @@ if input_error:
 
 # For periodic schedules ensure we check with predecessors before the 1st period
 # This allows us to check for precedence relations with the previous period
-if is_schedule_periodic:
-    predecessor_instance_start_idx = -1
-else:
-    predecessor_instance_start_idx = 0
+predecessor_instance_start_idx = -1 if is_schedule_periodic else 0
 
 model = cp_model.CpModel()
 
 for job_name, job in jobs.items():
     # Determine the processing time of a job based on the machine it is run on
-    if job["machine_name"] is None:
+    if job["machine"] is None:
         # TODO: need to reify based on machine id, index constraint?
         sys.exit(
             f"Auto-Scheduling on multiple machines not supported yet! Constrain job {job_name} to a specific machine!"
         )
     else:
         # TODO: this will need to be a reified variable to determine processing time based on machine
-        job["processing_time_var"] = job["processing_times"][job["machine_name"]]
+        job["processing_time_var"] = job["processing_times"][job["machine"]]
         # TODO: this will need to be an index variable to schedule jobs on multiple machines
-        job["machine_name_var"] = job["machine_name"]
+        job["machine_var"] = job["machine"]
 
     # Ensure the job starts within its period
     if job["start_time"] is None:
@@ -241,9 +242,9 @@ for job_name, job in jobs.items():
     # Variable to keep track if the interval for a particular job instance wraps around the period
     job_wrapped = model.new_bool_var(f"{job_name}_wrap")
 
-    # TODO: Reify on machine_name_var for machine scheduling
-    machine_name = job["machine_name_var"]
-    machine = machines[job["machine_name_var"]]
+    # TODO: Reify on machine_var for machine scheduling
+    machine_var = job["machine_var"]
+    machine = machines[job["machine_var"]]
 
     # Ensure the completion time is equal to start time plus processing time, while accounting for wrapping around the start of its period
     # Note: It is important to understand when to use job["start_time_var"] + job["processing_time_var"] vs job["completion_time_var"]
@@ -289,7 +290,7 @@ for job_name, job in jobs.items():
             - machine["setup_time"],
             job["processing_time_var"] + machine["teardown_time"],
             ~job_wrapped,
-            f"{machine_name}_job_{job_name}_instance_{instance_idx}_interval",
+            f"machine_{machine_var}_job_{job_name}_instance_{instance_idx}_interval",
         )
 
         # Split the wrapped interval into two
@@ -299,7 +300,7 @@ for job_name, job in jobs.items():
             - machine["setup_time"],
             job["period"],
             job_wrapped,
-            f"{machine_name}_job_{job_name}_instance_{instance_idx}_wrap_before_interval",
+            f"machine_{machine_var}_job_{job_name}_instance_{instance_idx}_wrap_before_interval",
         )
         machine_job_instance_wrap_after_interval_var = model.new_optional_fixed_size_interval_var(
             0,
@@ -307,15 +308,15 @@ for job_name, job in jobs.items():
             + instance_idx * job["period"]
             + machine["teardown_time"],
             job_wrapped,
-            f"{machine_name}_job_{job_name}_instance_{instance_idx}_wrap_after_interval",
+            f"machine_{machine_var}_job_{job_name}_instance_{instance_idx}_wrap_after_interval",
         )
-        machines[job["machine_name_var"]]["interval_vars"].append(
+        machines[job["machine_var"]]["interval_vars"].append(
             machine_job_instance_interval_var
         )
-        machines[job["machine_name_var"]]["interval_vars"].append(
+        machines[job["machine_var"]]["interval_vars"].append(
             machine_job_instance_wrap_before_interval_var
         )
-        machines[job["machine_name_var"]]["interval_vars"].append(
+        machines[job["machine_var"]]["interval_vars"].append(
             machine_job_instance_wrap_after_interval_var
         )
 
@@ -470,7 +471,7 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
     # If start times and machine names specified for all jobs, then the input was feasible
     if all(
         [
-            job["start_time"] is not None and job["machine_name"] is not None
+            job["start_time"] is not None and job["machine"] is not None
             for job in jobs.values()
         ]
     ):
@@ -480,7 +481,7 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
 
     for job_name, job in jobs.items():
         job["start_time"] = solver.value(job["start_time_var"])
-        job["machine_name"] = job["machine_name_var"]
+        job["machine"] = job["machine_var"]
         job["processing_time"] = solver.value(job["processing_time_var"])
         job["completion_time"] = solver.value(job["completion_time_var"])
         job["flow_time"] = (
@@ -493,11 +494,11 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
             if job["earliness_var"] is not None
             else None
         )
-        job["job_name"] = job_name
+        job["job"] = job_name
 
         # Get rid of variables in our job dictionary before output
         job.pop("start_time_var", None)
-        job.pop("machine_name_var", None)
+        job.pop("machine_var", None)
         job.pop("processing_time_var", None)
         job.pop("completion_time_var", None)
         job.pop("flow_time_var", None)

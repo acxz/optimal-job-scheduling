@@ -24,8 +24,8 @@ args = parser.parse_args()
 schedule_file = sys.stdin if args.schedule == "-" else args.schedule
 jobs = pd.read_csv(schedule_file)
 
-# Ensure the job_name is a string
-jobs["job_name"] = jobs["job_name"].apply(lambda value: str(value))
+# Ensure the job value is a string
+jobs["job"] = jobs["job"].apply(lambda value: str(value))
 
 
 # Populate a schedule with periodic job instances
@@ -67,16 +67,16 @@ color_idx = 0
 
 # Create traces for each job
 traces = []
-for job_name in schedule["job_name"].unique():
-    job_schedule = schedule[schedule["job_name"] == job_name]
+for job in schedule["job"].unique():
+    job_schedule = schedule[schedule["job"] == job]
 
     traces.append(
         go.Bar(
-            name=job_name,
-            text=job_name,
+            name=job,
+            text=job,
             base=job_schedule["start_time"],
             x=job_schedule["processing_time"],
-            y=job_schedule["machine_name"],
+            y=job_schedule["machine"],
             error_x=dict(
                 type="data",
                 symmetric=False,
@@ -93,21 +93,21 @@ for job_name in schedule["job_name"].unique():
             + "release_time=%{customdata[9]}<br>"
             + "deadline=%{customdata[10]}<br>"
             + "<extra>"
-            + "job_name=%{customdata[0]}<br>"
+            + "job=%{customdata[0]}<br>"
             + "period=%{customdata[1]}<br>"
             + "processing_time=%{customdata[2]}<br>"
             + "flow_time=%{customdata[3]}<br>"
             + "earliness=%{customdata[4]}<br>"
-            + "machine_name=%{customdata[5]}"
+            + "machine=%{customdata[5]}"
             + "</extra>",
             customdata=job_schedule[
                 [
-                    "job_name",
+                    "job",
                     "period",
                     "processing_time",
                     "flow_time",
                     "earliness",
-                    "machine_name",
+                    "machine",
                     "instance",
                     "start_time",
                     "completion_time",
@@ -136,19 +136,19 @@ time_constraint_menu = dict(type="buttons", buttons=[time_constraint_button])
 # Create a dropdown for showing jobs grouped by machine
 # For reference: https://stackoverflow.com/questions/65941253/plotly-how-to-toggle-traces-with-a-button-similar-to-clicking-them-in-legend
 machine_buttons = []
-for machine_name in schedule["machine_name"].unique():
-    machine_schedule = schedule[schedule["machine_name"] == machine_name]
+for machine in schedule["machine"].unique():
+    machine_schedule = schedule[schedule["machine"] == machine]
 
     # Create a button for showing jobs only with a particular machine/showing all jobs
     machine_buttons.append(
         dict(
-            label="Toggle All/Machine: " + machine_name,
+            label="Toggle All/Machine: " + machine,
             method="restyle",
             args=[
                 {
                     "visible": [
                         True
-                        if (trace.customdata[:, 5] == machine_name).all()
+                        if (trace.customdata[:, 5] == machine).all()
                         else "legendonly"
                         for trace in traces
                     ]
@@ -164,14 +164,14 @@ for machine_name in schedule["machine_name"].unique():
     # Create a button for showing/hiding jobs grouped by machine
     machine_buttons.append(
         dict(
-            label="Toggle Machine: " + machine_name,
+            label="Toggle Machine: " + machine,
             method="restyle",
             args=[
                 {"visible": True},
                 [
                     trace_idx
                     for trace_idx, trace in enumerate(traces)
-                    if (trace.customdata[:, 5] == machine_name).all()
+                    if (trace.customdata[:, 5] == machine).all()
                 ],
             ],
             args2=[
@@ -179,7 +179,7 @@ for machine_name in schedule["machine_name"].unique():
                 [
                     trace_idx
                     for trace_idx, trace in enumerate(traces)
-                    if (trace.customdata[:, 5] == machine_name).all()
+                    if (trace.customdata[:, 5] == machine).all()
                 ],
             ],
         )
