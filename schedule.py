@@ -103,6 +103,7 @@ for job in jobs.values():
     # Variables to solve for
     job |= {
         "start_time_var": None,
+        "machine_vars": [],
         "machine_var": None,
         "processing_time_var": None,
         "completion_time_var": None,
@@ -210,18 +211,6 @@ predecessor_instance_start_idx = -1 if is_schedule_periodic else 0
 model = cp_model.CpModel()
 
 for job_name, job in jobs.items():
-    # Determine the processing time of a job based on the machine it is run on
-    if job["machine"] is None:
-        # TODO: need to reify based on machine id, index constraint?
-        sys.exit(
-            f"Auto-Scheduling on multiple machines not supported yet! Constrain job {job_name} to a specific machine!"
-        )
-    else:
-        # TODO: this will need to be a reified variable to determine processing time based on machine
-        job["processing_time_var"] = job["processing_times"][job["machine"]]
-        # TODO: this will need to be an index variable to schedule jobs on multiple machines
-        job["machine_var"] = job["machine"]
-
     # Ensure the job starts within its period
     if job["start_time"] is None:
         job["start_time_var"] = model.new_int_var(
@@ -240,9 +229,68 @@ for job_name, job in jobs.items():
     # Variable to keep track if the interval for a particular job instance wraps around the period
     job_wrapped = model.new_bool_var(f"{job_name}_wrap")
 
-    # TODO: Reify on machine_var for machine scheduling
-    machine_var = job["machine_var"]
-    machine = machines[job["machine_var"]]
+    # Ensure the release time and deadline are respected
+    # In this context of periodicity, release time and deadline are defined as
+    # a time within the job's period
+    if job["release_time"] is not None:
+        model.add(job["start_time_var"] >= job["release_time"])
+
+    if job["deadline"] is not None:
+        # Note that we use job["completion_time_var"] and not job["start_time_var"] + job["processing_time_var"]
+        # since the deadline is defined within the period
+        model.add(job["completion_time_var"] <= job["deadline"])
+
+    # Constraints on assigning the job to a machine
+    # Option 1: Boolean approach
+    # Boolean variable to determine if job is run on that machine
+    job["machine_vars"] = [model.new_bool_var(f"job_{job_name}_assigned_on_machine_{machine_name}") for machine_name in machines.keys()]
+
+    # Ensure the job runs only on one machine
+    model.add_exactly_one(job["machine_vars"])
+
+    # If the machine is specified then ensure the job runs on that machine
+    if job["machine"] is not None:
+        # Determine the index of the machine to recover the boolean variable that specifies if the job is assigned to this machine
+        machine_idx = list(machines.keys()).index(job["machine"])
+        job_assigned_on_machine_var = job["machine_vars"][machine_idx]
+
+        # Ensure that the job is assigned on the machine
+        model.add(job_assigned_on_machine_var == True)
+
+    # If job has no processing time for a machine, ensure the job cannot be assigned to that machine
+    for machine_name in machines.keys():
+        if not machine_name in job["processing_times"]:
+            machine_idx = list(machines.keys()).index(machine_name)
+            job_assigned_on_machine_var = job["machine_vars"][machine_idx]
+            model.add(job_assigned_on_machine_var == False)
+
+    # Option 2: Element approach
+    # Create a variable for the machine index that corresponds to the machine the job runs on
+    job["machine_var"] = model.new_int_var(0, len(machines) - 1, f"job_{job_name}_assigned_on_machine")
+
+    # If the machine is specified then ensure the job runs on that machine
+    if job["machine"] is not None:
+        # Determine the index of the machine in the machines dictionary
+        machine_idx = list(machines.keys()).index(job["machine"])
+
+        # Ensure that the job is assigned on the machine
+        model.add(job["machine_var"] == machine_idx)
+
+    # If job has no processing time for a machine, ensure the job cannot be assigned to that machine
+    for machine_name in machines.keys():
+        if not machine_name in job["processing_times"]:
+            machine_idx = list(machines.keys()).index(machine_name)
+            model.add(job["machine_var"] != machine_idx)
+
+    # TODO: determine how to use a variable mapping
+    # Recover the machine assigned to this job
+    # Determine the index of the machine in the machines dictionary
+    machine_idx = list(machines.keys()).index(job["machine"])
+    machine_name = list(machines.keys())[machine_idx]
+    machine = machines[machine_name]
+
+    # Determine the processing time of a job based on the machine it is run on
+    job["processing_time_var"] = job["processing_times"][machine_name]
 
     # Ensure the completion time is equal to start time plus processing time, while accounting for wrapping around the start of its period
     # Note: It is important to understand when to use job["start_time_var"] + job["processing_time_var"] vs job["completion_time_var"]
@@ -266,17 +314,6 @@ for job_name, job in jobs.items():
         > job["completion_time_var"] + machine["teardown_time"]
     ).only_enforce_if(job_wrapped)
 
-    # Ensure the release time and deadline are respected
-    # In this context of periodicity, release time and deadline are defined as
-    # a time within the job's period
-    if job["release_time"] is not None:
-        model.add(job["start_time_var"] >= job["release_time"])
-
-    if job["deadline"] is not None:
-        # Note that we use job["completion_time_var"] and not job["start_time_var"] + job["processing_time_var"]
-        # since the deadline is defined within the period
-        model.add(job["completion_time_var"] <= job["deadline"])
-
     for instance_idx in range(job["instances"]):
         # Add job instance interval var to its assigned machine's interval vars
         # accounting for setup time and teardown time
@@ -288,7 +325,7 @@ for job_name, job in jobs.items():
             - machine["setup_time"],
             job["processing_time_var"] + machine["teardown_time"],
             ~job_wrapped,
-            f"machine_{machine_var}_job_{job_name}_instance_{instance_idx}_interval",
+            f"machine_{machine_name}_job_{job_name}_instance_{instance_idx}_interval",
         )
 
         # Split the wrapped interval into two
@@ -298,7 +335,7 @@ for job_name, job in jobs.items():
             - machine["setup_time"],
             job["period"],
             job_wrapped,
-            f"machine_{machine_var}_job_{job_name}_instance_{instance_idx}_wrap_before_interval",
+            f"machine_{machine_name}_job_{job_name}_instance_{instance_idx}_wrap_before_interval",
         )
         machine_job_instance_wrap_after_interval_var = model.new_optional_fixed_size_interval_var(
             0,
@@ -306,15 +343,15 @@ for job_name, job in jobs.items():
             + instance_idx * job["period"]
             + machine["teardown_time"],
             job_wrapped,
-            f"machine_{machine_var}_job_{job_name}_instance_{instance_idx}_wrap_after_interval",
+            f"machine_{machine_name}_job_{job_name}_instance_{instance_idx}_wrap_after_interval",
         )
-        machines[job["machine_var"]]["interval_vars"].append(
+        machines[machine_name]["interval_vars"].append(
             machine_job_instance_interval_var
         )
-        machines[job["machine_var"]]["interval_vars"].append(
+        machines[machine_name]["interval_vars"].append(
             machine_job_instance_wrap_before_interval_var
         )
-        machines[job["machine_var"]]["interval_vars"].append(
+        machines[machine_name]["interval_vars"].append(
             machine_job_instance_wrap_after_interval_var
         )
 
@@ -520,7 +557,8 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
 
     for job_name, job in jobs.items():
         job["start_time"] = solver.value(job["start_time_var"])
-        job["machine"] = job["machine_var"]
+        machine_idx = solver.value(job["machine_var"])
+        job["machine"] = list(machines.keys())[machine_idx]
         job["processing_time"] = solver.value(job["processing_time_var"])
         job["completion_time"] = solver.value(job["completion_time_var"])
         job["flow_time"] = (
@@ -535,6 +573,7 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
         )
         # Get rid of variables in our job dictionary before output
         job.pop("start_time_var", None)
+        job.pop("machine_vars", None)
         job.pop("machine_var", None)
         job.pop("processing_time_var", None)
         job.pop("completion_time_var", None)
