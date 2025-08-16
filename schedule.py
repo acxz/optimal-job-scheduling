@@ -533,8 +533,6 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
             if job["earliness_var"] is not None
             else None
         )
-        job["job"] = job_name
-
         # Get rid of variables in our job dictionary before output
         job.pop("start_time_var", None)
         job.pop("machine_var", None)
@@ -542,6 +540,9 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
         job.pop("completion_time_var", None)
         job.pop("flow_time_var", None)
         job.pop("earliness_var", None)
+
+        # Prepend the job name value under the job key for readability
+        jobs[job_name] = {"job": job_name} | jobs[job_name]
 
     # Output solution formatted as csv
     job_characteristics = list(jobs.values())[0].keys()
