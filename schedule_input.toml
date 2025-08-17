@@ -9,15 +9,15 @@ teardown_time = 1
 
 [jobs.j1]
 period = 20
-start_time = 0
+completion_time = 5
 processing_times.m1 = 5
-completion_time_weight = 1
 
 [jobs.j2]
 period = 40
 machine = "m2"
 processing_times = 3
 deadline = 15
+completion_time_weight = 1
 
 [jobs.j3]
 period = 40
@@ -39,19 +39,10 @@ completion_time_weight = -1
 
 [jobs.j5]
 period = 30
-machine = "m2"
-processing_times.m1 = 3
-processing_times.m2 = 3
-time_lags.j6 = 10
-slack_times.j6 = 10
-
-[jobs.j6]
-period = 30
 processing_times.m2 = 2
 different_machine_jobs = ["j1"]
-release_time = 25
 
-[jobs.j7]
+[jobs.j6]
 period = 120
 start_time = 119
 processing_times.m2 = 2
@@ -64,6 +55,7 @@ processing_times.m2 = 2
 # [jobs.job_name]
 # period
 # start_time
+# completion_time
 # machine
 # processing_times
 # release_time

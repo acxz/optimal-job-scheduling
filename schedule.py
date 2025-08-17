@@ -79,6 +79,8 @@ for job in jobs.values():
         job["period"] = None
     if "start_time" not in job.keys():
         job["start_time"] = None
+    if "completion_time" not in job.keys():
+        job["completion_time"] = None
     if "machine" not in job.keys():
         job["machine"] = None
     if "release_time" not in job.keys():
@@ -106,6 +108,7 @@ for job in jobs.values():
         "machine_vars": [],
         "machine_var": None,
         "processing_time_var": None,
+        "start+processing_time_var": None,
         "completion_time_var": None,
     }
 
@@ -204,6 +207,10 @@ if not is_schedule_periodic:
 if input_error:
     sys.exit()
 
+# For periodic schedules ensure we check with intervals before the 1st period
+# This allows us to check for interval overlaps with jobs starting in the previous period, but wrapping around to the current period
+interval_instance_start_idx = -1 if is_schedule_periodic else 0
+
 # For periodic schedules ensure we check with predecessors before the 1st period
 # This allows us to check for precedence relations with the previous period
 predecessor_instance_start_idx = -1 if is_schedule_periodic else 0
@@ -215,35 +222,54 @@ for job_name, job in jobs.items():
     if job["start_time"] is None:
         job["start_time_var"] = model.new_int_var(
             0,
-            job["period"],
-            f"{job_name}_start_time",
+            job["period"] - 1,
+            f"job_{job_name}_start_time",
         )
     # If the start time is specified then ensure the start time is respected
+    # Handle values outside of the first period via module with the job's period
     else:
-        job["start_time_var"] = model.new_constant(job["start_time"])
+        job["start_time_var"] = model.new_constant(job["start_time"] % job["period"])
 
     # Define the completion time variable that handles a job wrapping around its period with a modulo equality
-    job["completion_time_var"] = model.new_int_var(
-        0, job["period"], f"{job_name}_completion_time"
-    )
-    # Variable to keep track if the interval for a particular job instance wraps around the period
-    job_wrapped = model.new_bool_var(f"{job_name}_wrap")
+    if job["completion_time"] is None:
+        job["completion_time_var"] = model.new_int_var(
+            1, job["period"], f"job_{job_name}_completion_time"
+        )
+    # If the completion time is specified then ensure the completion time is respected
+    # Handle values outside of the first period via module with the job's period
+    # Since completion time is defined as [1, job's period] modify the modulo output
+    # to give job's period when the result would be 0 (outside of the range)
+    else:
+        job["completion_time_var"] = model.new_constant(
+            job["completion_time"] % job["period"]
+            if job["completion_time"] % job["period"] != 0
+            else job["period"]
+        )
 
     # Ensure the release time and deadline are respected
-    # In this context of periodicity, release time and deadline are defined as
-    # a time within the job's period
+    # Release time and deadline are defined as a time within the job's period
+    # Handle values outside of the first period via module with the job's period
     if job["release_time"] is not None:
-        model.add(job["start_time_var"] >= job["release_time"])
+        model.add(job["start_time_var"] >= job["release_time"] % job["period"])
 
     if job["deadline"] is not None:
-        # Note that we use job["completion_time_var"] and not job["start_time_var"] + job["processing_time_var"]
+        # Note that we use job["completion_time_var"] and not job["start+processing_time_var"]
         # since the deadline is defined within the period
-        model.add(job["completion_time_var"] <= job["deadline"])
+        # Since completion time is defined as [1, job's period] modify the modulo output
+        # to give job's period when the result would be 0 (outside of the range)
+        model.add(
+            job["completion_time_var"] <= job["deadline"] % job["period"]
+            if job["deadline"] % job["period"] != 0
+            else job["period"]
+        )
 
     # Constraints on assigning the job to a machine
     # Option 1: Boolean approach
     # Boolean variable to determine if job is run on that machine
-    job["machine_vars"] = [model.new_bool_var(f"job_{job_name}_assigned_on_machine_{machine_name}") for machine_name in machines.keys()]
+    job["machine_vars"] = [
+        model.new_bool_var(f"job_{job_name}_assigned_on_machine_{machine_name}")
+        for machine_name in machines.keys()
+    ]
 
     # Ensure the job runs only on one machine
     model.add_exactly_one(job["machine_vars"])
@@ -266,7 +292,9 @@ for job_name, job in jobs.items():
 
     # Option 2: Element approach
     # Create a variable for the machine index that corresponds to the machine the job runs on
-    job["machine_var"] = model.new_int_var(0, len(machines) - 1, f"job_{job_name}_assigned_on_machine")
+    job["machine_var"] = model.new_int_var(
+        0, len(machines) - 1, f"job_{job_name}_assigned_on_machine"
+    )
 
     # If the machine is specified then ensure the job runs on that machine
     if job["machine"] is not None:
@@ -289,70 +317,59 @@ for job_name, job in jobs.items():
     machine_name = list(machines.keys())[machine_idx]
     machine = machines[machine_name]
 
-    # Determine the processing time of a job based on the machine it is run on
-    job["processing_time_var"] = job["processing_times"][machine_name]
+    # Create a domain variable for processing time with possible processing times for the job
+    processing_time_domain = cp_model.Domain.from_values(
+        list(job["processing_times"].values())
+    )
+    job["processing_time_var"] = model.new_int_var_from_domain(
+        processing_time_domain, f"job_{job_name}_processing_time"
+    )
 
-    # Ensure the completion time is equal to start time plus processing time, while accounting for wrapping around the start of its period
+    # Determine the processing time of a job based on the machine it is run on
+    # FIXME: Override as constant until machine scheduling implemented
+    job["processing_time_var"] = model.new_constant(
+        job["processing_times"][machine_name]
+    )
+
+    # Create a variable to represent the sum of start time and processing time to use in future constraints
     # Note: It is important to understand when to use job["start_time_var"] + job["processing_time_var"] vs job["completion_time_var"]
     # as both represent the completion time, but the first represents the completion time of the job that has started in the current period,
     # while the second one represents the completion time of the job that started in the previous period
+    # The upper bound is 2 times the job's period minus 1 as remember this variable can overrun the current period.
+    # However if it overruns 2 periods, then the job will overlap with another instance of itself.
+    job["start+processing_time_var"] = model.new_int_var(
+        0, 2 * job["period"] - 1, f"job_{job_name}_start+processing_time"
+    )
+    model.add(
+        job["start+processing_time_var"]
+        == job["start_time_var"] + job["processing_time_var"]
+    )
+
+    # Ensure the completion time is equal to start time plus processing time, while accounting for wrapping around the start of its period
     model.add_modulo_equality(
         job["completion_time_var"],
-        job["start_time_var"] + job["processing_time_var"],
+        job["start+processing_time_var"],
         job["period"],
     )
 
-    # If the job has wrapped around its period, the start time must occur before the completion time
-    # Otherwise the start time must be after the completion time
-    # Account for the machine's setup time and teardown time
-    model.add(
-        job["start_time_var"] - machine["setup_time"]
-        < job["completion_time_var"] + machine["teardown_time"]
-    ).only_enforce_if(~job_wrapped)
-    model.add(
-        job["start_time_var"] - machine["setup_time"]
-        > job["completion_time_var"] + machine["teardown_time"]
-    ).only_enforce_if(job_wrapped)
-
-    for instance_idx in range(job["instances"]):
-        # Add job instance interval var to its assigned machine's interval vars
-        # accounting for setup time and teardown time
-
-        # These are optional interval variables based on if the interval does not wrap around the period or does
-        machine_job_instance_interval_var = model.new_optional_fixed_size_interval_var(
+    # Create a job interval for every instance in the period accounting for setup time and teardown time
+    for instance_idx in range(interval_instance_start_idx, job["instances"]):
+        machine_job_instance_interval_var = model.new_interval_var(
             job["start_time_var"]
             + instance_idx * job["period"]
             - machine["setup_time"],
-            job["processing_time_var"] + machine["teardown_time"],
-            ~job_wrapped,
+            machine["setup_time"]
+            + job["processing_time_var"]
+            + machine["teardown_time"],
+            job["start+processing_time_var"]
+            + instance_idx * job["period"]
+            + machine["teardown_time"],
             f"machine_{machine_name}_job_{job_name}_instance_{instance_idx}_interval",
         )
 
-        # Split the wrapped interval into two
-        machine_job_instance_wrap_before_interval_var = model.new_optional_fixed_size_interval_var(
-            job["start_time_var"]
-            + instance_idx * job["period"]
-            - machine["setup_time"],
-            job["period"],
-            job_wrapped,
-            f"machine_{machine_name}_job_{job_name}_instance_{instance_idx}_wrap_before_interval",
-        )
-        machine_job_instance_wrap_after_interval_var = model.new_optional_fixed_size_interval_var(
-            0,
-            job["completion_time_var"]
-            + instance_idx * job["period"]
-            + machine["teardown_time"],
-            job_wrapped,
-            f"machine_{machine_name}_job_{job_name}_instance_{instance_idx}_wrap_after_interval",
-        )
+        # Add job instance interval var to its assigned machine's interval vars
         machines[machine_name]["interval_vars"].append(
             machine_job_instance_interval_var
-        )
-        machines[machine_name]["interval_vars"].append(
-            machine_job_instance_wrap_before_interval_var
-        )
-        machines[machine_name]["interval_vars"].append(
-            machine_job_instance_wrap_after_interval_var
         )
 
 # Add no overlap for intervals on the same machine
@@ -505,7 +522,7 @@ for successor_job_name, successor_job in jobs.items():
 # Define intermediary variables for the objective function
 for job in jobs.values():
     job["flow_time_var"] = (
-        job["start_time_var"] + job["processing_time_var"] - job["release_time"]
+        job["start+processing_time_var"] - job["release_time"]
         if job["release_time"] is not None
         else None
     )
@@ -544,10 +561,12 @@ status_name = solver.status_name()
 
 # Retrieve solution
 if status_name == "OPTIMAL" or status_name == "FEASIBLE":
-    # If start times and machine names specified for all jobs, then the input was feasible
+    # If start times or completion times and machine names specified for all jobs, then the input was feasible
     if all(
         [
-            job["start_time"] is not None and job["machine"] is not None
+            job["start_time"] is not None
+            or job["completion_time"] is not None
+            and job["machine"] is not None
             for job in jobs.values()
         ]
     ):
@@ -557,10 +576,10 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
 
     for job_name, job in jobs.items():
         job["start_time"] = solver.value(job["start_time_var"])
+        job["completion_time"] = solver.value(job["completion_time_var"])
         machine_idx = solver.value(job["machine_var"])
         job["machine"] = list(machines.keys())[machine_idx]
         job["processing_time"] = solver.value(job["processing_time_var"])
-        job["completion_time"] = solver.value(job["completion_time_var"])
         job["flow_time"] = (
             solver.value(job["flow_time_var"])
             if job["flow_time_var"] is not None
@@ -573,10 +592,11 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
         )
         # Get rid of variables in our job dictionary before output
         job.pop("start_time_var", None)
+        job.pop("completion_time_var", None)
         job.pop("machine_vars", None)
         job.pop("machine_var", None)
         job.pop("processing_time_var", None)
-        job.pop("completion_time_var", None)
+        job.pop("start+processing_time_var", None)
         job.pop("flow_time_var", None)
         job.pop("earliness_var", None)
 
@@ -591,7 +611,5 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
 
 elif status_name == "INFEASIBLE":
     print("Input is not feasible!", file=sys.stderr)
-elif status_name == "UNKNOWN":
-    print("Solver timed out", file=sys.stderr)
 else:
-    print("Model Invalid", file=sys.stderr)
+    print(status_name, file=sys.stderr)

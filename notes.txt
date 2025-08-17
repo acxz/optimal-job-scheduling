@@ -1,13 +1,27 @@
+## is there a use for 0 processing time jobs? i.e. events? maybe as informational or for purposes beyond the scope of scheduling? would need to make sure that the machine's setup time and teardown time are not accounted for
+
+## for visualization, having the same color based on the name across multuple runs makes it easier to debug/less context switch
+## maybe add some function/hash that determines the color idx based on the name
+
+## Add warning for unrecognized input fields?
+
+## minimize objectives from predecessor
+
 ## Syntax for preemption
 
 simply add a preemptible column, True or False
 
 job can be preemptible until its deadline, if no deadline then its next instance
 
+would also need some flag to denote preemptiable on the same machine or across multiple machines
+and if multiple machines, how would the user specify that?
+
 ## Constraints for preemption
 
 One way is to treat each job instance as a group of intervals of unit length, where some intervals can be optional.
 The sum of the intervals must be equal to the processing time. The duration of a job instance would then be completion_time - start_time.
+
+## We may be able to reduce duplicate code in the predecessor constraints by moving the if statement deeper into the for loops
 
 ## Predecessor outputs
 
