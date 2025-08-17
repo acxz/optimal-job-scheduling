@@ -89,4 +89,10 @@ Debugging an infeasible model is currently not possible, however, this can be do
 
 As the scheduling problem tends to result in a complex constraint program, having tests to verify the logic is desirable. These tests can also serve as helpful examples.
 
-From a problem space perspective, support for additional scheduling problems, such as ones with multiple machines, multi-stage jobs, preemption, other objectives, etc. can be added. This can be done by allowing the user to specify the scheduling problem in the three-field notation and provide the schedule problem data, from which the script can construct the appropriate variables, constraints, and objectives for the solver. Note that such a tool does not exist currently and probably hasn't existed yet due to the fact that domain specific scheduling problems are typically constructed directly in the model rather than in three-field notation.
+From a problem space perspective, support for additional scheduling problems, such as ones with machine scheduling, multi-stage jobs, preemption, other objectives, etc. can be added.
+
+## Similar Projects
+
+* [JobShopLib](https://github.com/Pabloo22/job_shop_lib)
+* [PyJobShop](https://github.com/PyJobShop/PyJobShop)
+* [timefold](https://github.com/timefoldai/timefold-solver)
