@@ -34,8 +34,6 @@ For most shells, entering the following in the terminal will work:
 uv run schedule.py < schedule_input.toml
 ```
 
-To signal the end from manual stdin input, make sure to enter `Ctrl-D` on Unix systems and `Ctrl-Z` on Windows.
-
 To enter input from multiple sources, you can [pipe](https://en.wikipedia.org/wiki/Pipeline_(Unix)) the concatenation of the inputs to `schedule.py`. For example using `cat`:
 
 ```bash

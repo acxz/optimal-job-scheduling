@@ -30,6 +30,11 @@ parser.add_argument(
 
 args = parser.parse_args()
 schedule_input_file = sys.stdin.buffer if args.input == "-" else open(args.input, "rb")
+if args.input == "-" and sys.stdin.isatty():
+    print(
+        "To signal the end of manual input, make sure to enter `Ctrl-D` on Unix systems and `Ctrl-Z` on Windows.\nWaiting for user input...",
+        file=sys.stderr,
+    )
 schedule_input = tomllib.load(schedule_input_file)
 
 # Populate periodic key if not specified
@@ -41,7 +46,7 @@ if "machines" not in schedule_input.keys():
     schedule_input["machines"] = {"machine": {}}
 
 # Check that at least one job is specified
-if "jobs" not in schedule_input.keys() and len(schedule_input["jobs"]) == 0:
+if "jobs" not in schedule_input.keys() or len(schedule_input["jobs"]) == 0:
     print(
         f"No jobs specified!",
         file=sys.stderr,
