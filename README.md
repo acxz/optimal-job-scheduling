@@ -36,6 +36,12 @@ uv run schedule.py < schedule_input.toml
 
 To signal the end from manual stdin input, make sure to enter `Ctrl-D` on Unix systems and `Ctrl-Z` on Windows.
 
+To enter input from multiple sources, you can [pipe](https://en.wikipedia.org/wiki/Pipeline_(Unix)) the concatenation of the inputs to `schedule.py`. For example using `cat`:
+
+```bash
+cat jobs.toml machines.toml | uv run schedule.py
+```
+
 The output is sent to the [standard output (stdout)](https://en.wikipedia.org/wiki/Standard_streams#Standard_output_(stdout)). To capture the output in a file for most shells, run like so:
 
 ```bash
@@ -52,7 +58,7 @@ A schedule csv can be visualized with the `schedule_viz.py` script via stdin:
 uv run schedule_viz.py < schedule_output.csv
 ```
 
-To directly visualize the output of `schedule.py`, you can utilize [pipes](https://en.wikipedia.org/wiki/Pipeline_(Unix)) like so:
+To directly visualize the output of `schedule.py`, you can utilize a pipe like so:
 
 ```bash
 uv run schedule.py < schedule_input.csv | uv run schedule_viz.py
