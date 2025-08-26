@@ -88,6 +88,10 @@ for job in jobs.values():
         job["completion_time"] = None
     if "machine" not in job.keys():
         job["machine"] = None
+    if "same_machine_jobs" not in job.keys():
+        job["same_machine_jobs"] = []
+    if "different_machine_jobs" not in job.keys():
+        job["different_machine_jobs"] = []
     if "release_time" not in job.keys():
         job["release_time"] = None
     if "deadline" not in job.keys():
@@ -96,16 +100,20 @@ for job in jobs.values():
         job["time_lags"] = {}
     if "slack_times" not in job.keys():
         job["slack_times"] = {}
-    if "same_machine_jobs" not in job.keys():
-        job["same_machine_jobs"] = []
-    if "different_machine_jobs" not in job.keys():
-        job["different_machine_jobs"] = []
     if "completion_time_weight" not in job.keys():
         job["completion_time_weight"] = 0
     if "flow_time_weight" not in job.keys():
         job["flow_time_weight"] = 0
     if "earliness_weight" not in job.keys():
         job["earliness_weight"] = 0
+    if "start_time_wrt" not in job.keys():
+        job["start_time_wrt"] = {}
+    if "completion_time_wrt" not in job.keys():
+        job["completion_time_wrt"] = {}
+    if "flow_time_wrt_weights" not in job.keys():
+        job["flow_time_wrt_weights"] = {}
+    if "earliness_wrt_weights" not in job.keys():
+        job["earliness_wrt_weights"] = {}
 
     # Variables to solve for
     job |= {
@@ -163,19 +171,30 @@ for job_name, job in jobs.items():
                 )
                 input_error = True
 
-# Ensure that each predecessor in time lags and slack times has been specified
+# Ensure that predecessors have been specified
+characteristics_with_predecessors = ["time_lags", "slack_times", "start_time_wrt", "completion_time_wrt", "flow_time_wrt_weights", "earliness_wrt_weights"]
 for job_name, job in jobs.items():
-    for predecessor_job_name in job["time_lags"].keys():
-        if predecessor_job_name not in jobs.keys():
+    for characteristic in characteristics_with_predecessors:
+        for predecessor_job_name in job[characteristic].keys():
+            if predecessor_job_name not in jobs.keys():
+                print(
+                    f"Job {job_name} has {characteristic} predecessor, {predecessor_job_name}, that does not exist!",
+                    file=sys.stderr,
+                )
+                input_error = True
+    # Ensure that a time lag is specified if a flow time predecessor weight is specified
+    for flow_time_predecessor_job_name in job["flow_time_wrt_weights"].keys():
+        if flow_time_predecessor_job_name not in job["time_lags"].keys():
             print(
-                f"Job {job_name} has a time lag predecessor, {predecessor_job_name}, that does not exist!",
+                f"Job {job_name} has a flow time weight predecessor, {flow_time_predecessor_job_name}, that is not specified in the job's time lags!",
                 file=sys.stderr,
             )
             input_error = True
-    for predecessor_job_name in job["slack_times"].keys():
-        if predecessor_job_name not in jobs.keys():
+    # Ensure that a slack time is specified if an earliness predecessor weight is specified
+    for earliness_predecessor_job_name in job["earliness_wrt_weights"].keys():
+        if earliness_predecessor_job_name not in job["slack_times"].keys():
             print(
-                f"Job {job_name} has a slack time predecessor, {predecessor_job_name}, that does not exist!",
+                f"Job {job_name} has an earliness weight predecessor, {earliness_predecessor_job_name}, that is not specified in the job's slack times!",
                 file=sys.stderr,
             )
             input_error = True
