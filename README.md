@@ -34,11 +34,17 @@ For most shells, entering the following in the terminal will work:
 uv run schedule.py < schedule_input.toml
 ```
 
-To enter input from multiple sources, you can [pipe](https://en.wikipedia.org/wiki/Pipeline_(Unix)) the concatenation of the inputs to `schedule.py`. For example using `cat`:
+If you have multiple input files, want to split your input across multiple files, or want to read from multiple files and `stdin`, then you can concatenate the various inputs before passing them to `schedule.py`. This can be done using a [pipe (`|`)](https://en.wikipedia.org/wiki/Pipeline_(Unix)) or [process substitution (`<()`)](https://tldp.org/LDP/abs/html/process-sub.html). Below is an example using `cat` to concatenate input from multiple files and `stdin` (`-`):
 
 ```bash
-cat jobs.toml machines.toml | uv run schedule.py
+# Pipe
+cat schedule_input.toml solver_parameters.toml - | uv run schedule.py
+
+# Process substitution
+uv run schedule.py < <(cat schedule_input.toml solver_parameters.toml -)
 ```
+
+`-` is a conventional parameter for capturing input on `stdin`.
 
 The output is sent to the [standard output (stdout)](https://en.wikipedia.org/wiki/Standard_streams#Standard_output_(stdout)). To capture the output in a file for most shells, run like so:
 
