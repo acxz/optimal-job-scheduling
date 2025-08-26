@@ -13,9 +13,18 @@ This repository serves to provide utilities for creating, verifying, and visuali
 * $\text{min} \sum w^c_j C_j$: minimize a weighted sum of completion times
 * $\text{min} \sum w^f_j F_j$: minimize a weighted sum of flow times
 * $\text{min} \sum w^e_j E_j$: minimize a weighted sum of earliness
+* $\text{min} \sum w^c_{ij} C_{ij}$: minimize a weighted sum of completion times with respect to predecessors $^2$
+* $\text{min} \sum w^f_{ij} F_{ij}$: minimize a weighted sum of flow times with respect to predecessors $^3$
+* $\text{min} \sum w^e_{ij} E_{ij}$: minimize a weighted sum of earliness with respect to predecessors $^4$
 
 $^1$ The slack time between two jobs is the amount of time in which the second job must be started after the first job is completed. Formally, if job $i$ precedes job $j$, then $C_i + s_{ij} \geq S_j$ must be true. $C_i$ is the completion time of job $i$, $s_{ij}$ is the slack time job $j$ is allowed following job $i$, and $S_j$ is the start time of job $j$.
 The term is based on [project management terminology](https://en.wikipedia.org/wiki/Float_(project_management)) as the three-field scheduling notation has no widespread term for this concept.
+
+$^2$ The completion time of job $j$ with respect to predecessor job $i$ is defined as $C_{ij} = C_j - C_i$. Minimizing this objective will yield a solution where job $j$ completes as early as possible to job $i$'s completion, without trying to complete as early as possible from the beginning of the schedule.
+
+$^3$ The flow time of job $j$ with respect to predecessor job $i$ is defined as $F_{ij} = C_{ij} - l_{ij}$. Minimizing this objective will yield a solution where job $j$ completes as early as possible to the time lag ($l_{ij}$) from job $i$. Here, the time lag is the predecessor analagous to the release time.
+
+$^3$ The earliness of job $j$ with respect to predecessor job $i$ is defined as $E_{ij} = s_{ij} - C_{ij}$. Minimizing this objective will yield a solution where job $j$ completes as close as possible to the slack time ($s_{ij}$) from job $i$. Here, the slack time is the predecessor analagous to the deadline.
 
 [![Schedule Demo](./schedule_demo.png)](./schedule_demo.png)
 
