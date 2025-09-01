@@ -439,10 +439,33 @@ for successor_job_name, successor_job in jobs.items():
                 model.add_bool_or(predecessor_start_time_wrt_satisifed)
 
         # Ensure the completion time of the successor job with respect to the completion time of the predecessor is respected
-        # if completion_time_wrt is not None:
-        #     # Note we use start time plus processing time variable instead of the completion time variable
-        #     # The start time plus processing time accurately reflects the value from the start time rather than the completion time variable which is modulo'd
-        #     model.add(successor_job["start+processing_time_var"] == predecessor_job["completion_time_var"] + completion_time_wrt)
+        if completion_time_wrt is not None:
+            for successor_instance_idx in range(successor_job["instances"]):
+                # Create list to hold whether a predecessor instance satisfies the completion time with respect to a successor instance
+                predecessor_completion_time_wrt_satisifed = []
+
+                for predecessor_instance_idx in range(
+                    predecessor_instance_start_idx, predecessor_job["instances"]
+                ):
+                    # Boolean variable to keep track if a particular predecessor job instance satisfies the completion time with respect to constraint for a successor job instance
+                    completion_time_wrt_satisfied = model.new_bool_var(
+                        f"successor_{successor_job_name}_instance_{successor_instance_idx}_predecessor_{predecessor_job_name}_instance_{predecessor_instance_idx}_completion_time_wrt"
+                    )
+                    predecessor_completion_time_wrt_satisifed.append(
+                        completion_time_wrt_satisfied
+                    )
+
+                    # Ensure the successor instance completes after the predecessor instance completes with an offset
+                    model.add(
+                        predecessor_job["completion_time_var"]
+                        + predecessor_instance_idx * predecessor_job["period"]
+                        + completion_time_wrt
+                        == successor_job["completion_time_var"]
+                        + successor_instance_idx * successor_job["period"]
+                    ).only_enforce_if(completion_time_wrt_satisfied)
+
+                # Ensure that at least one predecessor instance satisfies the completion time with respect to constraint
+                model.add_bool_or(predecessor_completion_time_wrt_satisifed)
 
         # Ensure the time lag + slack time is respected with the same predecessor instance if both specified for the same predecessor
         if time_lag is not None and slack_time is not None:
