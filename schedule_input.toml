@@ -26,16 +26,16 @@ processing_times.m1 = 1
 processing_times.m2 = 3
 release_time = 10
 deadline = 20
-slack_times.j2 = 0
+predecessors.j2.slack_time = 0
 
 [jobs.j4]
 period = 20
 processing_times.m1 = 1
-time_lags.j1 = 5
-time_lags.j2 = 0
-slack_times.j1 = 10
 same_machine_jobs = ["j3"]
 completion_time_weight = -1
+[jobs.j4.predecessors]
+j1 = { time_lag = 5, slack_time = 10 }
+j2.time_lag = 0
 
 [jobs.j5]
 period = 30
@@ -62,12 +62,13 @@ processing_times.m2 = 2
 # processing_times
 # release_time
 # deadline
-# time_lags
-# slack_times
 # completion_time_weight
 # flow_time_weight
 # earliness_weight
+# [jobs.job_name.predecessors.predecessor_job_name]
 # start_time_wrt
 # completion_time_wrt
-# flow_time_wrt_weights
-# earliness_wrt_weights
+# time_lag
+# slack_time
+# flow_time_wrt_weight
+# earliness_wrt_weight

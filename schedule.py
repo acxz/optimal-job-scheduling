@@ -96,24 +96,28 @@ for job in jobs.values():
         job["release_time"] = None
     if "deadline" not in job.keys():
         job["deadline"] = None
-    if "time_lags" not in job.keys():
-        job["time_lags"] = {}
-    if "slack_times" not in job.keys():
-        job["slack_times"] = {}
     if "completion_time_weight" not in job.keys():
         job["completion_time_weight"] = 0
     if "flow_time_weight" not in job.keys():
         job["flow_time_weight"] = 0
     if "earliness_weight" not in job.keys():
         job["earliness_weight"] = 0
-    if "start_time_wrt" not in job.keys():
-        job["start_time_wrt"] = {}
-    if "completion_time_wrt" not in job.keys():
-        job["completion_time_wrt"] = {}
-    if "flow_time_wrt_weights" not in job.keys():
-        job["flow_time_wrt_weights"] = {}
-    if "earliness_wrt_weights" not in job.keys():
-        job["earliness_wrt_weights"] = {}
+
+    if "predecessors" not in job.keys():
+        job["predecessors"] = {}
+    for pred_job_name, pred_characteristics in job["predecessors"].items():
+        if "start_time_wrt" not in pred_characteristics.keys():
+            pred_characteristics["start_time_wrt"] = None
+        if "completion_time_wrt" not in pred_characteristics.keys():
+            pred_characteristics["completion_time_wrt"] = None
+        if "time_lag" not in pred_characteristics.keys():
+            pred_characteristics["time_lag"] = None
+        if "slack_time" not in pred_characteristics.keys():
+            pred_characteristics["slack_time"] = None
+        if "flow_time_wrt_weight" not in pred_characteristics.keys():
+            pred_characteristics["flow_time_wrt_weight"] = 0
+        if "earliness_wrt_weight" not in pred_characteristics.keys():
+            pred_characteristics["earliness_wrt_weight"] = 0
 
     # Variables to solve for
     job |= {
@@ -172,29 +176,11 @@ for job_name, job in jobs.items():
                 input_error = True
 
 # Ensure that predecessors have been specified
-characteristics_with_predecessors = ["time_lags", "slack_times", "start_time_wrt", "completion_time_wrt", "flow_time_wrt_weights", "earliness_wrt_weights"]
 for job_name, job in jobs.items():
-    for characteristic in characteristics_with_predecessors:
-        for predecessor_job_name in job[characteristic].keys():
-            if predecessor_job_name not in jobs.keys():
-                print(
-                    f"Job {job_name} has {characteristic} predecessor, {predecessor_job_name}, that does not exist!",
-                    file=sys.stderr,
-                )
-                input_error = True
-    # Ensure that a time lag is specified if a flow time predecessor weight is specified
-    for flow_time_predecessor_job_name in job["flow_time_wrt_weights"].keys():
-        if flow_time_predecessor_job_name not in job["time_lags"].keys():
+    for predecessor_job_name in job["predecessors"].keys():
+        if predecessor_job_name not in jobs.keys():
             print(
-                f"Job {job_name} has a flow time weight predecessor, {flow_time_predecessor_job_name}, that is not specified in the job's time lags!",
-                file=sys.stderr,
-            )
-            input_error = True
-    # Ensure that a slack time is specified if an earliness predecessor weight is specified
-    for earliness_predecessor_job_name in job["earliness_wrt_weights"].keys():
-        if earliness_predecessor_job_name not in job["slack_times"].keys():
-            print(
-                f"Job {job_name} has an earliness weight predecessor, {earliness_predecessor_job_name}, that is not specified in the job's slack times!",
+                f"Job {job_name} has predecessor, {predecessor_job_name}, that does not exist!",
                 file=sys.stderr,
             )
             input_error = True
@@ -410,74 +396,108 @@ for machine_name, machine in machines.items():
 # If a job specifies a time lag and a slack time for the same predecessor job,
 # an additional constraint is added that ensures the time lag and slack time constraints are both applied on the same predecessor instance
 for successor_job_name, successor_job in jobs.items():
-    # Ensure the time lags are respected
-    for predecessor_job_name, successor_time_lag in successor_job["time_lags"].items():
-        # Get the predecessor job
-        predecessor_job = jobs[predecessor_job_name]
-
-        for successor_instance_idx in range(successor_job["instances"]):
-            # Create list to hold whether a predecessor instance satisfies the time lag constraint for a successor instance
-            predecessor_lag_satisfied = []
-
-            for predecessor_instance_idx in range(
-                predecessor_instance_start_idx, predecessor_job["instances"]
-            ):
-                # Boolean variable to keep track if a particular predecessor job instance satisfies the time lag constraint for a successor job instance
-                lag_satisfied = model.new_bool_var(
-                    f"successor_{successor_job_name}_instance_{successor_instance_idx}_predecessor_{predecessor_job_name}_instance_{predecessor_instance_idx}_time_lag"
-                )
-                predecessor_lag_satisfied.append(lag_satisfied)
-
-                # Reify the time lag constraint
-                # 1st condition: Ensure the predecessor instance occurs before the successor instance
-                model.add(
-                    predecessor_job["completion_time_var"]
-                    + predecessor_instance_idx * predecessor_job["period"]
-                    + successor_time_lag
-                    <= successor_job["start_time_var"]
-                    + successor_instance_idx * successor_job["period"]
-                ).only_enforce_if(lag_satisfied)
-                # 2nd condition: Ensure the predecessor instance occurs within one successor period
-                model.add(
-                    predecessor_job["completion_time_var"]
-                    + predecessor_instance_idx * predecessor_job["period"]
-                    + successor_job["period"]
-                    <= successor_job["start_time_var"]
-                    + (successor_instance_idx + 1) * successor_job["period"]
-                ).only_enforce_if(lag_satisfied)
-
-            # Ensure that at least one predecessor instance satisfies the time lag constraint
-            # As this statement is in a successor instance for loop, We add this constraint for every successor instance
-            model.add_bool_or(predecessor_lag_satisfied)
-
-    # Ensure the slack times are respected
-    for predecessor_job_name, successor_slack_time in successor_job[
-        "slack_times"
+    for predecessor_job_name, pred_characteristics in successor_job[
+        "predecessors"
     ].items():
-        # Get the predecessor job
+        # Get the predecessor job and its characteristics
         predecessor_job = jobs[predecessor_job_name]
+        time_lag = pred_characteristics.get("time_lag")
+        slack_time = pred_characteristics.get("slack_time")
 
-        for successor_instance_idx in range(successor_job["instances"]):
-            # Create list to hold whether a predecessor instance satisfies the slack time constraint for a successor instance
-            predecessor_slack_satisfied = []
+        # Ensure the time lag + slack time is respected with the same predecessor instance if both specified for the same predecessor
+        if time_lag is not None and slack_time is not None:
+            for successor_instance_idx in range(successor_job["instances"]):
+                # Create list to hold whether a predecessor instance satisfies the time lag and slack time constraint for a successor instance
+                predecessor_lag_slack_satisifed = []
 
-            for predecessor_instance_idx in range(
-                predecessor_instance_start_idx, predecessor_job["instances"]
-            ):
-                # Boolean variable to keep track if a particular predecessor job instance satisfies the slack time constraint for a successor job instance
-                slack_satisfied = model.new_bool_var(
-                    f"successor_{successor_job_name}_instance_{successor_instance_idx}_predecessor_{predecessor_job_name}_instance_{predecessor_instance_idx}_slack_time"
-                )
-                predecessor_slack_satisfied.append(slack_satisfied)
+                for predecessor_instance_idx in range(
+                    predecessor_instance_start_idx, predecessor_job["instances"]
+                ):
+                    # Boolean variable to keep track if a particular predecessor job instance satisfies the time lag + slack time constraint for a successor job instance
+                    lag_slack_satisfied = model.new_bool_var(
+                        f"successor_{successor_job_name}_instance_{successor_instance_idx}_predecessor_{predecessor_job_name}_instance_{predecessor_instance_idx}_time_lag_slack_time"
+                    )
+                    predecessor_lag_slack_satisifed.append(lag_slack_satisfied)
+                    # Reify the time lag + slack time constraint
+                    # 1st condition: Ensure the predecessor instance occurs before the successor instance
+                    model.add(
+                        predecessor_job["completion_time_var"]
+                        + predecessor_instance_idx * predecessor_job["period"]
+                        + time_lag
+                        <= successor_job["start_time_var"]
+                        + successor_instance_idx * successor_job["period"]
+                    ).only_enforce_if(lag_slack_satisfied)
+                    # 2nd condition: Ensure the successor instance occurs within the slack of the predecessor instance
+                    model.add(
+                        predecessor_job["completion_time_var"]
+                        + predecessor_instance_idx * predecessor_job["period"]
+                        + slack_time
+                        >= successor_job["start_time_var"]
+                        + successor_instance_idx * successor_job["period"]
+                    ).only_enforce_if(lag_slack_satisfied)
 
-                # For a positive slack time find any previous predecessor instance for which the slack time constraint holds
-                if successor_slack_time >= 0:
+                # Ensure that at least one predecessor instance satisfies the time lag + slack time constraint
+                model.add_bool_or(predecessor_lag_slack_satisifed)
+
+        # Ensure the time lags are respected
+        if time_lag is not None:
+            for successor_instance_idx in range(successor_job["instances"]):
+                # Create list to hold whether a predecessor instance satisfies the time lag constraint for a successor instance
+                predecessor_lag_satisfied = []
+
+                for predecessor_instance_idx in range(
+                    predecessor_instance_start_idx, predecessor_job["instances"]
+                ):
+                    # Boolean variable to keep track if a particular predecessor job instance satisfies the time lag constraint for a successor job instance
+                    lag_satisfied = model.new_bool_var(
+                        f"successor_{successor_job_name}_instance_{successor_instance_idx}_predecessor_{predecessor_job_name}_instance_{predecessor_instance_idx}_time_lag"
+                    )
+                    predecessor_lag_satisfied.append(lag_satisfied)
+
+                    # Reify the time lag constraint
+                    # 1st condition: Ensure the predecessor instance occurs before the successor instance
+                    model.add(
+                        predecessor_job["completion_time_var"]
+                        + predecessor_instance_idx * predecessor_job["period"]
+                        + time_lag
+                        <= successor_job["start_time_var"]
+                        + successor_instance_idx * successor_job["period"]
+                    ).only_enforce_if(lag_satisfied)
+                    # 2nd condition: Ensure the predecessor instance occurs within one successor period
+                    model.add(
+                        predecessor_job["completion_time_var"]
+                        + predecessor_instance_idx * predecessor_job["period"]
+                        + successor_job["period"]
+                        <= successor_job["start_time_var"]
+                        + (successor_instance_idx + 1) * successor_job["period"]
+                    ).only_enforce_if(lag_satisfied)
+
+                # Ensure that at least one predecessor instance satisfies the time lag constraint
+                # As this statement is in a successor instance for loop, We add this constraint for every successor instance
+                model.add_bool_or(predecessor_lag_satisfied)
+
+        # Ensure the slack times are respected
+        if slack_time is not None:
+            for successor_instance_idx in range(successor_job["instances"]):
+                # Create list to hold whether a predecessor instance satisfies the slack time constraint for a successor instance
+                predecessor_slack_satisfied = []
+
+                for predecessor_instance_idx in range(
+                    predecessor_instance_start_idx, predecessor_job["instances"]
+                ):
+                    # Boolean variable to keep track if a particular predecessor job instance satisfies the slack time constraint for a successor job instance
+                    slack_satisfied = model.new_bool_var(
+                        f"successor_{successor_job_name}_instance_{successor_instance_idx}_predecessor_{predecessor_job_name}_instance_{predecessor_instance_idx}_slack_time"
+                    )
+                    predecessor_slack_satisfied.append(slack_satisfied)
+
+                    # Find any previous predecessor instance for which the slack time constraint holds
                     # Reify the slack time constraint
                     # 1st condition: Ensure the successor instance occurs within the slack of the predecessor instance
                     model.add(
                         predecessor_job["completion_time_var"]
                         + predecessor_instance_idx * predecessor_job["period"]
-                        + successor_slack_time
+                        + slack_time
                         >= successor_job["start_time_var"]
                         + successor_instance_idx * successor_job["period"]
                     ).only_enforce_if(slack_satisfied)
@@ -490,58 +510,8 @@ for successor_job_name, successor_job in jobs.items():
                         + (successor_instance_idx + 1) * successor_job["period"]
                     ).only_enforce_if(slack_satisfied)
 
-                # For a negative slack time choose the predecessor instance that is immediately after the successor instance
-                else:
-                    # TODO
-                    pass
-
-            # Every successor instance needs to have at least one predecessor instance for which the slack time constraint is satisfied by
-            model.add_bool_or(predecessor_slack_satisfied)
-
-    # Ensure the time lag + slack time is respected with the same predecessor instance if both specified for the same predecessor
-    predecessor_job_names = set(successor_job["time_lags"].keys()) & set(
-        successor_job["slack_times"].keys()
-    )
-    for predecessor_job_name in predecessor_job_names:
-        # Get the successor's time lag and slack time associated with the predecessor that is shared between the two constraints
-        successor_time_lag = successor_job["time_lags"][predecessor_job_name]
-        successor_slack_time = successor_job["slack_times"][predecessor_job_name]
-
-        # Get the predecessor job
-        predecessor_job = jobs[predecessor_job_name]
-
-        for successor_instance_idx in range(successor_job["instances"]):
-            # Create list to hold whether a predecessor instance satisfies the time lag and slack time constraint for a successor instance
-            predecessor_lag_slack_satisifed = []
-
-            for predecessor_instance_idx in range(
-                predecessor_instance_start_idx, predecessor_job["instances"]
-            ):
-                # Boolean variable to keep track if a particular predecessor job instance satisfies the time lag + slack time constraint for a successor job instance
-                lag_slack_satisfied = model.new_bool_var(
-                    f"successor_{successor_job_name}_instance_{successor_instance_idx}_predecessor_{predecessor_job_name}_instance_{predecessor_instance_idx}_time_lag_slack_time"
-                )
-                predecessor_lag_slack_satisifed.append(lag_slack_satisfied)
-                # Reify the time lag + slack time constraint
-                # 1st condition: Ensure the predecessor instance occurs before the successor instance
-                model.add(
-                    predecessor_job["completion_time_var"]
-                    + predecessor_instance_idx * predecessor_job["period"]
-                    + successor_time_lag
-                    <= successor_job["start_time_var"]
-                    + successor_instance_idx * successor_job["period"]
-                ).only_enforce_if(lag_slack_satisfied)
-                # 2nd condition: Ensure the successor instance occurs within the slack of the predecessor instance
-                model.add(
-                    predecessor_job["completion_time_var"]
-                    + predecessor_instance_idx * predecessor_job["period"]
-                    + successor_slack_time
-                    >= successor_job["start_time_var"]
-                    + successor_instance_idx * successor_job["period"]
-                ).only_enforce_if(lag_slack_satisfied)
-
-            # Ensure that at least one predecessor instance satisfies the time lag + slack time constraint
-            model.add_bool_or(predecessor_lag_slack_satisifed)
+                # Every successor instance needs to have at least one predecessor instance for which the slack time constraint is satisfied by
+                model.add_bool_or(predecessor_slack_satisfied)
 
 # Define intermediary variables for the objective function
 for job in jobs.values():
