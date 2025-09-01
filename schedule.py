@@ -120,6 +120,10 @@ for job in jobs.values():
             pred_characteristics["flow_time_wrt_weight"] = 0
         if "earliness_wrt_weight" not in pred_characteristics.keys():
             pred_characteristics["earliness_wrt_weight"] = 0
+        # Variables to solve for
+        pred_characteristics["completion_time_wrt_var"] = None
+        pred_characteristics["flow_time_wrt_var"] = None
+        pred_characteristics["earliness_wrt_var"] = None
 
     # Variables to solve for
     job |= {
@@ -411,6 +415,9 @@ for successor_job_name, successor_job in jobs.items():
 
         # Ensure the start time of the successor job with respect to the completion time of the predecessor is respected
         if start_time_wrt is not None:
+            # Define the start time with respect to variable as the specified start time with respect to
+            pred_characteristics["start_time_wrt_var"] = model.new_constant(start_time_wrt)
+
             for successor_instance_idx in range(successor_job["instances"]):
                 # Create list to hold whether a predecessor instance satisfies the start time with respect to a successor instance
                 predecessor_start_time_wrt_satisifed = []
@@ -430,7 +437,7 @@ for successor_job_name, successor_job in jobs.items():
                     model.add(
                         predecessor_job["completion_time_var"]
                         + predecessor_instance_idx * predecessor_job["period"]
-                        + start_time_wrt
+                        + pred_characteristics["start_time_wrt"]
                         == successor_job["start_time_var"]
                         + successor_instance_idx * successor_job["period"]
                     ).only_enforce_if(start_time_wrt_satisfied)
@@ -440,6 +447,9 @@ for successor_job_name, successor_job in jobs.items():
 
         # Ensure the completion time of the successor job with respect to the completion time of the predecessor is respected
         if completion_time_wrt is not None:
+            # Define the completion time with respect to variable as the specified completion time with respect to
+            pred_characteristics["completion_time_wrt_var"] = model.new_constant(completion_time_wrt)
+
             for successor_instance_idx in range(successor_job["instances"]):
                 # Create list to hold whether a predecessor instance satisfies the completion time with respect to a successor instance
                 predecessor_completion_time_wrt_satisifed = []
@@ -459,7 +469,7 @@ for successor_job_name, successor_job in jobs.items():
                     model.add(
                         predecessor_job["completion_time_var"]
                         + predecessor_instance_idx * predecessor_job["period"]
-                        + completion_time_wrt
+                        + pred_characteristics["completion_time_wrt_var"]
                         == successor_job["completion_time_var"]
                         + successor_instance_idx * successor_job["period"]
                     ).only_enforce_if(completion_time_wrt_satisfied)
@@ -656,6 +666,10 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
         job.pop("start+processing_time_var", None)
         job.pop("flow_time_var", None)
         job.pop("earliness_var", None)
+        for pred_characteristics in job["predecessors"].values():
+            pred_characteristics.pop("completion_time_wrt_var", None)
+            pred_characteristics.pop("flow_time_wrt_var", None)
+            pred_characteristics.pop("earliness_wrt_var", None)
 
         # Prepend the job name value under the job key for readability
         jobs[job_name] = {"job": job_name} | jobs[job_name]
