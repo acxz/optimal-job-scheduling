@@ -114,6 +114,8 @@ for job in jobs.values():
             pred_characteristics["time_lag"] = None
         if "slack_time" not in pred_characteristics.keys():
             pred_characteristics["slack_time"] = None
+        if "completion_time_wrt_weight" not in pred_characteristics.keys():
+            pred_characteristics["completion_time_wrt_weight"] = 0
         if "flow_time_wrt_weight" not in pred_characteristics.keys():
             pred_characteristics["flow_time_wrt_weight"] = 0
         if "earliness_wrt_weight" not in pred_characteristics.keys():
@@ -393,6 +395,7 @@ for machine_name, machine in machines.items():
 
 # To add precedence constraints run a second pass through the jobs
 # to ensure all the jobs' start time and processing time variables have been created
+# These contraints need to look through all predecessor instances to ensure that at least one predecessor instance satisfies the constraint for each successor instance in the hyper-period
 # If a job specifies a time lag and a slack time for the same predecessor job,
 # an additional constraint is added that ensures the time lag and slack time constraints are both applied on the same predecessor instance
 for successor_job_name, successor_job in jobs.items():
@@ -401,8 +404,45 @@ for successor_job_name, successor_job in jobs.items():
     ].items():
         # Get the predecessor job and its characteristics
         predecessor_job = jobs[predecessor_job_name]
+        start_time_wrt = pred_characteristics.get("start_time_wrt")
+        completion_time_wrt = pred_characteristics.get("completion_time_wrt")
         time_lag = pred_characteristics.get("time_lag")
         slack_time = pred_characteristics.get("slack_time")
+
+        # Ensure the start time of the successor job with respect to the completion time of the predecessor is respected
+        if start_time_wrt is not None:
+            for successor_instance_idx in range(successor_job["instances"]):
+                # Create list to hold whether a predecessor instance satisfies the start time with respect to a successor instance
+                predecessor_start_time_wrt_satisifed = []
+
+                for predecessor_instance_idx in range(
+                    predecessor_instance_start_idx, predecessor_job["instances"]
+                ):
+                    # Boolean variable to keep track if a particular predecessor job instance satisfies the start time with respect to constraint for a successor job instance
+                    start_time_wrt_satisfied = model.new_bool_var(
+                        f"successor_{successor_job_name}_instance_{successor_instance_idx}_predecessor_{predecessor_job_name}_instance_{predecessor_instance_idx}_start_time_wrt"
+                    )
+                    predecessor_start_time_wrt_satisifed.append(
+                        start_time_wrt_satisfied
+                    )
+
+                    # Ensure the successor instance starts after the predecessor instance completes with an offset
+                    model.add(
+                        predecessor_job["completion_time_var"]
+                        + predecessor_instance_idx * predecessor_job["period"]
+                        + start_time_wrt
+                        == successor_job["start_time_var"]
+                        + successor_instance_idx * successor_job["period"]
+                    ).only_enforce_if(start_time_wrt_satisfied)
+
+                # Ensure that at least one predecessor instance satisfies the start time with respect to constraint
+                model.add_bool_or(predecessor_start_time_wrt_satisifed)
+
+        # Ensure the completion time of the successor job with respect to the completion time of the predecessor is respected
+        # if completion_time_wrt is not None:
+        #     # Note we use start time plus processing time variable instead of the completion time variable
+        #     # The start time plus processing time accurately reflects the value from the start time rather than the completion time variable which is modulo'd
+        #     model.add(successor_job["start+processing_time_var"] == predecessor_job["completion_time_var"] + completion_time_wrt)
 
         # Ensure the time lag + slack time is respected with the same predecessor instance if both specified for the same predecessor
         if time_lag is not None and slack_time is not None:
