@@ -416,7 +416,9 @@ for successor_job_name, successor_job in jobs.items():
         # Ensure the start time of the successor job with respect to the completion time of the predecessor is respected
         if start_time_wrt is not None:
             # Define the start time with respect to variable as the specified start time with respect to
-            pred_characteristics["start_time_wrt_var"] = model.new_constant(start_time_wrt)
+            pred_characteristics["start_time_wrt_var"] = model.new_constant(
+                start_time_wrt
+            )
 
             for successor_instance_idx in range(successor_job["instances"]):
                 # Create list to hold whether a predecessor instance satisfies the start time with respect to a successor instance
@@ -448,7 +450,9 @@ for successor_job_name, successor_job in jobs.items():
         # Ensure the completion time of the successor job with respect to the completion time of the predecessor is respected
         if completion_time_wrt is not None:
             # Define the completion time with respect to variable as the specified completion time with respect to
-            pred_characteristics["completion_time_wrt_var"] = model.new_constant(completion_time_wrt)
+            pred_characteristics["completion_time_wrt_var"] = model.new_constant(
+                completion_time_wrt
+            )
 
             for successor_instance_idx in range(successor_job["instances"]):
                 # Create list to hold whether a predecessor instance satisfies the completion time with respect to a successor instance
@@ -586,6 +590,63 @@ for successor_job_name, successor_job in jobs.items():
                 # Every successor instance needs to have at least one predecessor instance for which the slack time constraint is satisfied by
                 model.add_bool_or(predecessor_slack_satisfied)
 
+        # For the purposes of minimization, if the completion_time_wrt is not specified, then compute the value of completion_time_wrt
+        if completion_time_wrt is None:
+            pred_characteristics["completion_time_wrt_var"] = model.new_int_var(
+                0,
+                hyper_period,
+                f"successor_{successor_job_name}_predecessor_{predecessor_job_name}_completion_time_wrt",
+            )
+            # Ensure the completion_time_wrt is at least the processing time of the job
+            model.add(
+                pred_characteristics["completion_time_wrt_var"]
+                >= successor_job["processing_time_var"]
+            )
+
+            # Introduce an intermediate completion time wrt as a value to capture the one way difference between successor and predecessor
+            # By adding a modulo equality, we ensure completion time wrt is always positive
+            # This is to handle the case when the immediate predecessor for successor completes in the previous period
+            # In such a case the completion time of tthe successor minus the completion time of the predecessor is negative,
+            # Taking the modulo of the above difference with the period ensures that we have a positive value to minimize
+            pred_characteristics["dividend_completion_time_wrt_var"] = (
+                model.new_int_var(
+                    0,
+                    hyper_period,
+                    f"successor_{successor_job_name}_predecessor_{predecessor_job_name}_dividend_completion_time_wrt",
+                )
+            )
+            model.add_modulo_equality(
+                pred_characteristics["completion_time_wrt_var"],
+                pred_characteristics["dividend_completion_time_wrt_var"],
+                predecessor_job["period"],
+            )
+
+            # If succ and pred have the same period, then just check the first period
+            if predecessor_job["period"] == successor_job["period"]:
+                model.add(
+                    pred_characteristics["dividend_completion_time_wrt_var"]
+                    == successor_job["completion_time_var"]
+                    - predecessor_job["completion_time_var"]
+                )
+
+            # If succ and pred do not have the same period and we still want to minimize the completion time wrt,
+            # Then formulate the constraints for each instance of the successor in the hyper-period (similar to slack time),
+            # but instead of using the slack time use the completion_time_wrt variable,
+            # And when minimizing the completion_time_wrt, take the average of all completion_time_wrt
+            # This should ensure that the completion_time_wrt corresponds to value that is from the successor instance to the previously immediate predecessor instance
+            elif pred_characteristics["completion_time_wrt_weight"] != 0:
+                print(
+                    "Multiperiod completion time wrt weight not supported",
+                    file=sys.stderr,
+                )
+                print(
+                    f"Offending jobs: {predecessor_job_name} and {successor_job_name}",
+                    file=sys.stderr,
+                )
+                sys.exit()
+                for successor_instance_idx in range(successor_job["instances"]):
+                    pass
+
 # Define intermediary variables for the objective function
 for job in jobs.values():
     job["flow_time_var"] = (
@@ -602,7 +663,7 @@ for job in jobs.values():
 model.minimize(
     # Minimize the completion time
     sum(
-        job["completion_time_weight"] * job["completion_time_var"]
+        job["completion_time_weight"] * job["start+processing_time_var"]
         for job in jobs.values()
     )
     +
@@ -618,6 +679,14 @@ model.minimize(
         job["earliness_weight"] * job["earliness_var"]
         for job in jobs.values()
         if job["earliness_var"] is not None
+    )
+    # Minimize the completion time with respect to predecessors
+    + sum(
+        pred_characteristics["completion_time_wrt_weight"]
+        * pred_characteristics["completion_time_wrt_var"]
+        for job in jobs.values()
+        for pred_characteristics in job["predecessors"].values()
+        if pred_characteristics["completion_time_wrt_var"] is not None
     )
 )
 
@@ -657,6 +726,12 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
             if job["earliness_var"] is not None
             else None
         )
+        for pred_characteristics in job["predecessors"].values():
+            pred_characteristics["completion_time_wrt"] = (
+                solver.value(pred_characteristics["completion_time_wrt_var"])
+                if pred_characteristics["completion_time_wrt_var"] is not None
+                else None
+            )
         # Get rid of variables in our job dictionary before output
         job.pop("start_time_var", None)
         job.pop("completion_time_var", None)
@@ -668,6 +743,7 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
         job.pop("earliness_var", None)
         for pred_characteristics in job["predecessors"].values():
             pred_characteristics.pop("completion_time_wrt_var", None)
+            pred_characteristics.pop("dividend_completion_time_wrt_var", None)
             pred_characteristics.pop("flow_time_wrt_var", None)
             pred_characteristics.pop("earliness_wrt_var", None)
 
