@@ -2,7 +2,8 @@
 
 This repository serves to provide utilities for creating, verifying, and visualizing [periodic](https://scholar.google.com/scholar?q=Survey+on+Periodic+Scheduling+for+Time-triggered+Hard+Real-time+Systems) [scheduling problems](https://en.wikipedia.org/wiki/Optimal_job_scheduling) (PSP) / periodic event scheduling problems (PESP). In particular, the scheduling problem being solved here is defined as $R|T_j,r_j,d_j,\text{mltrt},l_{ij},s_{ij}|\sum w^c_j C_j + \sum w^f_j F_j + \sum w^e_j E_j$ according to the [three-field scheduling notation](https://scholar.google.com/scholar?q=Survey+on+Periodic+Scheduling+for+Time-triggered+Hard+Real-time+Systems) and has the following [machine environment](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Machine_environments), [job characteristics](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Job_characteristics), and [objective functions](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Objective_functions):
 
-* $R$: single stage, [unrelated machines](https://en.wikipedia.org/wiki/Single-machine_scheduling)
+* $R$: single stage, [unrelated machines](https://en.wikipedia.org/wiki/Unrelated-machines_scheduling)
+* $m(j) == m(i)$: specified jobs must run on the same machine
 * $T_j$: periodic
 * $p_j$: arbitrary processing times
 * $r_j$: arbitrary release times
@@ -108,7 +109,7 @@ Debugging an infeasible model is currently not possible, however, this can be do
 
 As the scheduling problem tends to result in a complex constraint program, having tests to verify the logic is desirable. These tests can also serve as helpful examples.
 
-From a problem space perspective, support for additional scheduling problems, such as ones with multi-stage jobs, preemption, other objectives, etc. can be added.
+From a problem space perspective, support for additional scheduling problems, such as ones with cumulative constraints, multi-stage jobs, preemption, other objectives, etc. can be added.
 
 ## Similar Projects
 

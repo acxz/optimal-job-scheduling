@@ -29,8 +29,8 @@ predecessors.j2.completion_time_wrt_weight = 2
 
 [jobs.j4]
 period = 20
-processing_times.m1 = 1
-same_machine_jobs = ["j3"]
+processing_times = { m1 = 1, m2 = 2 }
+same_machine_jobs = "j3"
 completion_time_weight = -1
 [jobs.j4.predecessors]
 j1 = { time_lag = 5, slack_time = 10 }
@@ -39,7 +39,7 @@ j2.time_lag = 0
 [jobs.j5]
 period = 30
 processing_times = 2
-different_machine_jobs = ["j1"]
+different_machine_jobs = ["j1", "j4"]
 
 [jobs.j6]
 period = 120

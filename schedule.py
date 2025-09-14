@@ -86,8 +86,14 @@ for job in jobs.values():
         job["machine"] = None
     if "same_machine_jobs" not in job.keys():
         job["same_machine_jobs"] = []
+    # If a string specified, convert to list
+    elif isinstance(job["same_machine_jobs"], str):
+        job["same_machine_jobs"] = [job["same_machine_jobs"]]
     if "different_machine_jobs" not in job.keys():
         job["different_machine_jobs"] = []
+    # If a string specified, convert to list
+    elif isinstance(job["different_machine_jobs"], str):
+        job["different_machine_jobs"] = [job["different_machine_jobs"]]
     if "release_time" not in job.keys():
         job["release_time"] = None
     if "deadline" not in job.keys():
@@ -176,8 +182,22 @@ for job_name, job in jobs.items():
                 )
                 input_error = True
 
-# Ensure that predecessors have been specified
+# Ensure that same machine jobs, different machine jobs, and predecessors have been specified
 for job_name, job in jobs.items():
+    for same_machine_job_name in job["same_machine_jobs"]:
+        if same_machine_job_name not in jobs.keys():
+            print(
+                f"Job {job_name} is specified to run on the same machine as job {same_machine_job_name} which does not exist!",
+                file=sys.stderr,
+            )
+            input_error = True
+    for different_machine_job_name in job["different_machine_jobs"]:
+        if different_machine_job_name not in jobs.keys():
+            print(
+                f"Job {job_name} is specified to run on a different machine from job {different_machine_job_name} which does not exist!",
+                file=sys.stderr,
+            )
+            input_error = True
     for predecessor_job_name in job["predecessors"].keys():
         if predecessor_job_name not in jobs.keys():
             print(
@@ -354,6 +374,29 @@ for job_name, job in jobs.items():
 # Add no overlap for intervals on the same machine
 for machine_name, machine in machines.items():
     model.add_no_overlap(machine["interval_vars"])
+
+# Ensure the same/different machine job constraints are respected
+for job_name, job in jobs.items():
+    for same_machine_job_name in job["same_machine_jobs"]:
+        # Recover same machine job
+        same_machine_job = jobs[same_machine_job_name]
+        # Ensure that the machine vars for coincident machines align for both jobs
+        # If the job is not specified to run on any of the same machines as the same machine job then exit
+        at_least_one_common_machine = False
+        for machine_name, machine_var in job["machine_vars"].items():
+            if machine_name in same_machine_job["processing_times"]:
+                model.add(machine_var == same_machine_job["machine_vars"][machine_name])
+                at_least_one_common_machine = True
+        if at_least_one_common_machine == False:
+            print(
+                f"Job {job_name} is not specified to run on any of the same machines that job {same_machine_job_name} is specified for!",
+                file=sys.stderr,
+            )
+            sys.exit()
+
+    for different_machine_job_name in job["different_machine_jobs"]:
+        # TODO
+        pass
 
 # Precedence of jobs running at different periods can be hard to reason about.
 # The following rationale for time lags and slack times is used here, where we do not discuss the different periods between the predecessor and successor, but rather focus on if for all successor job instances of any predecessor job instance satisfy the constraint. If so, then the precedence relationship is respected.
