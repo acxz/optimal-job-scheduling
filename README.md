@@ -4,6 +4,7 @@ This repository serves to provide utilities for creating, verifying, and visuali
 
 * $R$: single stage, [unrelated machines](https://en.wikipedia.org/wiki/Unrelated-machines_scheduling)
 * $m(j) == m(i)$: specified jobs must run on the same machine
+* $m(j) != m(i)$: specified jobs must run on a different machine
 * $T_j$: periodic
 * $p_j$: arbitrary processing times
 * $r_j$: arbitrary release times

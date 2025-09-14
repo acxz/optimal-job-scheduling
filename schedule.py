@@ -395,8 +395,14 @@ for job_name, job in jobs.items():
             sys.exit()
 
     for different_machine_job_name in job["different_machine_jobs"]:
-        # TODO
-        pass
+        # Recover different machine job
+        different_machine_job = jobs[different_machine_job_name]
+        # Ensure that the machine vars for coincident machines do not align for both jobs
+        for machine_name, machine_var in job["machine_vars"].items():
+            if machine_name in different_machine_job["processing_times"]:
+                model.add(
+                    machine_var != different_machine_job["machine_vars"][machine_name]
+                ).only_enforce_if(machine_var)
 
 # Precedence of jobs running at different periods can be hard to reason about.
 # The following rationale for time lags and slack times is used here, where we do not discuss the different periods between the predecessor and successor, but rather focus on if for all successor job instances of any predecessor job instance satisfy the constraint. If so, then the precedence relationship is respected.
