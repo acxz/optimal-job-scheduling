@@ -128,8 +128,7 @@ for job in jobs.values():
     # Variables to solve for
     job |= {
         "start_time_var": None,
-        "machine_vars": [],
-        "machine_var": None,
+        "machine_vars": {},
         "processing_time_var": None,
         "start+processing_time_var": None,
         "completion_time_var": None,
@@ -282,56 +281,22 @@ for job_name, job in jobs.items():
     # Constraints on assigning the job to a machine
     # Option 1: Boolean approach
     # Boolean variable to determine if job is run on that machine
-    job["machine_vars"] = [
-        model.new_bool_var(f"job_{job_name}_assigned_on_machine_{machine_name}")
-        for machine_name in machines.keys()
-    ]
+    for machine_name in machines.keys():
+        job["machine_vars"][machine_name] = model.new_bool_var(
+            f"job_{job_name}_assigned_on_machine_{machine_name}"
+        )
 
     # Ensure the job runs only on one machine
-    model.add_exactly_one(job["machine_vars"])
+    model.add_exactly_one(list(job["machine_vars"].values()))
 
     # If the machine is specified then ensure the job runs on that machine
     if job["machine"] is not None:
-        # Determine the index of the machine to recover the boolean variable that specifies if the job is assigned to this machine
-        machine_idx = list(machines.keys()).index(job["machine"])
-        job_assigned_on_machine_var = job["machine_vars"][machine_idx]
-
-        # Ensure that the job is assigned on the machine
-        model.add(job_assigned_on_machine_var == True)
+        model.add(job["machine_vars"][job["machine"]] == True)
 
     # If job has no processing time for a machine, ensure the job cannot be assigned to that machine
     for machine_name in machines.keys():
         if not machine_name in job["processing_times"]:
-            machine_idx = list(machines.keys()).index(machine_name)
-            job_assigned_on_machine_var = job["machine_vars"][machine_idx]
-            model.add(job_assigned_on_machine_var == False)
-
-    # Option 2: Element approach
-    # Create a variable for the machine index that corresponds to the machine the job runs on
-    job["machine_var"] = model.new_int_var(
-        0, len(machines) - 1, f"job_{job_name}_assigned_on_machine"
-    )
-
-    # If the machine is specified then ensure the job runs on that machine
-    if job["machine"] is not None:
-        # Determine the index of the machine in the machines dictionary
-        machine_idx = list(machines.keys()).index(job["machine"])
-
-        # Ensure that the job is assigned on the machine
-        model.add(job["machine_var"] == machine_idx)
-
-    # If job has no processing time for a machine, ensure the job cannot be assigned to that machine
-    for machine_name in machines.keys():
-        if not machine_name in job["processing_times"]:
-            machine_idx = list(machines.keys()).index(machine_name)
-            model.add(job["machine_var"] != machine_idx)
-
-    # TODO: determine how to use a variable mapping
-    # Recover the machine assigned to this job
-    # Determine the index of the machine in the machines dictionary
-    machine_idx = list(machines.keys()).index(job["machine"])
-    machine_name = list(machines.keys())[machine_idx]
-    machine = machines[machine_name]
+            model.add(job["machine_vars"][machine_name] == False)
 
     # Create a domain variable for processing time with possible processing times for the job
     processing_time_domain = cp_model.Domain.from_values(
@@ -342,10 +307,10 @@ for job_name, job in jobs.items():
     )
 
     # Determine the processing time of a job based on the machine it is run on
-    # FIXME: Override as constant until machine scheduling implemented
-    job["processing_time_var"] = model.new_constant(
-        job["processing_times"][machine_name]
-    )
+    for machine_name, processing_time in job["processing_times"].items():
+        model.add(job["processing_time_var"] == processing_time).only_enforce_if(
+            job["machine_vars"][machine_name]
+        )
 
     # Create a variable to represent the sum of start time and processing time to use in future constraints
     # Note: It is important to understand when to use job["start_time_var"] + job["processing_time_var"] vs job["completion_time_var"]
@@ -368,7 +333,16 @@ for job_name, job in jobs.items():
         job["period"],
     )
 
+    # for machine_name, machine in machines.items():
+    # TODO: determine how to use a variable mapping
+    # Recover the machine assigned to this job
+    # Determine the index of the machine in the machines dictionary
+    machine_idx = list(machines.keys()).index(job["machine"])
+    machine_name = list(machines.keys())[machine_idx]
+    machine = machines[machine_name]
+
     # Create a job interval for every instance in the period accounting for setup time and teardown time
+    # Make job intervals optional on what machine they are scheduled on
     for instance_idx in range(interval_instance_start_idx, job["instances"]):
         machine_job_instance_interval_var = model.new_interval_var(
             job["start_time_var"]
@@ -713,8 +687,10 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
     for job_name, job in jobs.items():
         job["start_time"] = solver.value(job["start_time_var"])
         job["completion_time"] = solver.value(job["completion_time_var"])
-        machine_idx = solver.value(job["machine_var"])
-        job["machine"] = list(machines.keys())[machine_idx]
+        # Recover the machine, the job is assigned on
+        for machine_name, machine_var in job["machine_vars"].items():
+            if solver.value(machine_var) == True:
+                job["machine"] = machine_name
         job["processing_time"] = solver.value(job["processing_time_var"])
         job["flow_time"] = (
             solver.value(job["flow_time_var"])
@@ -736,7 +712,6 @@ if status_name == "OPTIMAL" or status_name == "FEASIBLE":
         job.pop("start_time_var", None)
         job.pop("completion_time_var", None)
         job.pop("machine_vars", None)
-        job.pop("machine_var", None)
         job.pop("processing_time_var", None)
         job.pop("start+processing_time_var", None)
         job.pop("flow_time_var", None)
