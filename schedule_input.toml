@@ -21,7 +21,6 @@ completion_time_weight = 1
 
 [jobs.j3]
 period = 40
-machine = "m1"
 processing_times.m1 = 1
 processing_times.m2 = 3
 release_time = 10
@@ -39,13 +38,13 @@ j2.time_lag = 0
 
 [jobs.j5]
 period = 30
-processing_times.m2 = 2
+processing_times = 2
 different_machine_jobs = ["j1"]
 
 [jobs.j6]
 period = 120
 start_time = 119
-processing_times.m2 = 2
+processing_times = 2
 
 # periodic = true/false
 # [machines.machine_name]

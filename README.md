@@ -1,8 +1,8 @@
 # Periodic Scheduling
 
-This repository serves to provide utilities for creating, verifying, and visualizing [periodic](https://scholar.google.com/scholar?q=Survey+on+Periodic+Scheduling+for+Time-triggered+Hard+Real-time+Systems) [scheduling problems](https://en.wikipedia.org/wiki/Optimal_job_scheduling) (PSP) / periodic event scheduling problems (PESP). In particular, the scheduling problem being solved here is defined as $1|T_j,r_j,d_j,\text{mltrt},l_{ij},s_{ij}|\sum w^c_j C_j + \sum w^f_j F_j + \sum w^e_j E_j$ according to the [three-field scheduling notation](https://scholar.google.com/scholar?q=Survey+on+Periodic+Scheduling+for+Time-triggered+Hard+Real-time+Systems) and has the following [machine environment](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Machine_environments), [job characteristics](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Job_characteristics), and [objective functions](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Objective_functions):
+This repository serves to provide utilities for creating, verifying, and visualizing [periodic](https://scholar.google.com/scholar?q=Survey+on+Periodic+Scheduling+for+Time-triggered+Hard+Real-time+Systems) [scheduling problems](https://en.wikipedia.org/wiki/Optimal_job_scheduling) (PSP) / periodic event scheduling problems (PESP). In particular, the scheduling problem being solved here is defined as $R|T_j,r_j,d_j,\text{mltrt},l_{ij},s_{ij}|\sum w^c_j C_j + \sum w^f_j F_j + \sum w^e_j E_j$ according to the [three-field scheduling notation](https://scholar.google.com/scholar?q=Survey+on+Periodic+Scheduling+for+Time-triggered+Hard+Real-time+Systems) and has the following [machine environment](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Machine_environments), [job characteristics](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Job_characteristics), and [objective functions](https://en.wikipedia.org/wiki/Optimal_job_scheduling#Objective_functions):
 
-* $1$: single stage, [single machine](https://en.wikipedia.org/wiki/Single-machine_scheduling)
+* $R$: single stage, [unrelated machines](https://en.wikipedia.org/wiki/Single-machine_scheduling)
 * $T_j$: periodic
 * $p_j$: arbitrary processing times
 * $r_j$: arbitrary release times
@@ -24,7 +24,7 @@ $^2$ The completion time of job $j$ with respect to predecessor job $i$ is defin
 
 $^3$ The flow time of job $j$ with respect to predecessor job $i$ is defined as $F_{ij} = C_{ij} - l_{ij}$. Minimizing this objective will yield a solution where job $j$ completes as early as possible to the time lag ($l_{ij}$) from job $i$. Here, the time lag is the predecessor analagous to the release time.
 
-$^3$ The earliness of job $j$ with respect to predecessor job $i$ is defined as $E_{ij} = s_{ij} - C_{ij}$. Minimizing this objective will yield a solution where job $j$ completes as close as possible to the slack time ($s_{ij}$) from job $i$. Here, the slack time is the predecessor analagous to the deadline.
+$^4$ The earliness of job $j$ with respect to predecessor job $i$ is defined as $E_{ij} = s_{ij} - C_{ij}$. Minimizing this objective will yield a solution where job $j$ completes as close as possible to the slack time ($s_{ij}$) from job $i$. Here, the slack time is the predecessor analagous to the deadline.
 
 [![Schedule Demo](./schedule_demo.png)](./schedule_demo.png)
 
@@ -108,7 +108,7 @@ Debugging an infeasible model is currently not possible, however, this can be do
 
 As the scheduling problem tends to result in a complex constraint program, having tests to verify the logic is desirable. These tests can also serve as helpful examples.
 
-From a problem space perspective, support for additional scheduling problems, such as ones with machine scheduling, multi-stage jobs, preemption, other objectives, etc. can be added.
+From a problem space perspective, support for additional scheduling problems, such as ones with multi-stage jobs, preemption, other objectives, etc. can be added.
 
 ## Similar Projects
 

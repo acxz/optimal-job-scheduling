@@ -22,11 +22,7 @@ parser.add_argument(
 )
 
 # TODO: Describe input in detail for each field in help
-# i.e. possible values, default values, and what if left blank
-# Single Machine Scheduling (1): Single processing time is provided for all jobs, with no input machine csv
-# Identical Machine Scheduling (P): Single processing time is provided for all jobs, with an input machine csv
-# Uniform Machine Scheduling (Q): Single processing time is provided for all jobs, with an input machine csv specifying speed
-# Unrelated Machine Scheduling (R): Multiple processing times provided for all jobs, with an input machine csv
+# i.e. possible values, default values
 
 args = parser.parse_args()
 schedule_input_file = sys.stdin.buffer if args.input == "-" else open(args.input, "rb")
@@ -279,8 +275,7 @@ for job_name, job in jobs.items():
         )
 
     # Constraints on assigning the job to a machine
-    # Option 1: Boolean approach
-    # Boolean variable to determine if job is run on that machine
+    # Boolean variable to determine if job is assigned on that machine
     for machine_name in machines.keys():
         job["machine_vars"][machine_name] = model.new_bool_var(
             f"job_{job_name}_assigned_on_machine_{machine_name}"
@@ -333,34 +328,28 @@ for job_name, job in jobs.items():
         job["period"],
     )
 
-    # for machine_name, machine in machines.items():
-    # TODO: determine how to use a variable mapping
-    # Recover the machine assigned to this job
-    # Determine the index of the machine in the machines dictionary
-    machine_idx = list(machines.keys()).index(job["machine"])
-    machine_name = list(machines.keys())[machine_idx]
-    machine = machines[machine_name]
+    # Create a job interval for every job instance on every potential machine accounting for setup time and teardown time
+    for machine_name, processing_time in job["processing_times"].items():
+        # Recover the machine for machine setup time and teardown time
+        machine = machines[machine_name]
 
-    # Create a job interval for every instance in the period accounting for setup time and teardown time
-    # Make job intervals optional on what machine they are scheduled on
-    for instance_idx in range(interval_instance_start_idx, job["instances"]):
-        machine_job_instance_interval_var = model.new_interval_var(
-            job["start_time_var"]
-            + instance_idx * job["period"]
-            - machine["setup_time"],
-            machine["setup_time"]
-            + job["processing_time_var"]
-            + machine["teardown_time"],
-            job["start+processing_time_var"]
-            + instance_idx * job["period"]
-            + machine["teardown_time"],
-            f"machine_{machine_name}_job_{job_name}_instance_{instance_idx}_interval",
-        )
+        # Make job intervals optional on what machine they are scheduled on
+        for instance_idx in range(interval_instance_start_idx, job["instances"]):
+            machine_job_instance_interval_var = model.new_optional_interval_var(
+                job["start_time_var"]
+                + instance_idx * job["period"]
+                - machine["setup_time"],
+                machine["setup_time"] + processing_time + machine["teardown_time"],
+                job["start_time_var"]
+                + processing_time
+                + instance_idx * job["period"]
+                + machine["teardown_time"],
+                job["machine_vars"][machine_name],
+                f"machine_{machine_name}_job_{job_name}_instance_{instance_idx}_interval",
+            )
 
-        # Add job instance interval var to its assigned machine's interval vars
-        machines[machine_name]["interval_vars"].append(
-            machine_job_instance_interval_var
-        )
+            # Add job instance interval var to the machine's interval vars
+            machine["interval_vars"].append(machine_job_instance_interval_var)
 
 # Add no overlap for intervals on the same machine
 for machine_name, machine in machines.items():
