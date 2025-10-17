@@ -1,5 +1,12 @@
 periodic = true
 
+num_machines_weight = -1
+
+[machines.m01]
+machine_weight = 2
+[machines.m0]
+machine_weight = 2
+
 [machines.m1]
 
 [machines.m2]
@@ -47,10 +54,12 @@ start_time = 119
 processing_times = 2
 
 # periodic = true/false
+# num_machines_weight
 # [machines.machine_name]
 # speed
 # setup_time
 # teardown_time
+# machine_weight
 # [jobs.job_name]
 # period
 # start_time

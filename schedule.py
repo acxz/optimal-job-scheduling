@@ -37,6 +37,10 @@ schedule_input = tomllib.load(schedule_input_file)
 if "periodic" not in schedule_input.keys():
     schedule_input["periodic"] = True
 
+# Populate num_machines_weight key if not specified
+if "num_machines_weight" not in schedule_input.keys():
+    schedule_input["num_machines_weight"] = 0
+
 # Populate machines with a single machine if not specified
 if "machines" not in schedule_input.keys():
     schedule_input["machines"] = {"machine": {}}
@@ -49,8 +53,9 @@ if "jobs" not in schedule_input.keys() or len(schedule_input["jobs"]) == 0:
     )
     sys.exit()
 
-# Parse in periodic, machines, and jobs from schedule input
+# Parse in periodic, num_machines_weight, machines, and jobs from schedule input
 is_schedule_periodic = schedule_input["periodic"]
+num_machines_weight = schedule_input["num_machines_weight"]
 machines = schedule_input["machines"]
 jobs = schedule_input["jobs"]
 
@@ -62,8 +67,12 @@ for machine in machines.values():
         machine["setup_time"] = 0
     if "teardown_time" not in machine.keys():
         machine["teardown_time"] = 0
+    if "machine_weight" not in machine.keys():
+        machine["machine_weight"] = 0
     # Variable to check for job overlap
     machine["interval_vars"] = []
+    # Variable to keep track if the machine has any jobs assigned to it
+    machine["is_utilized_var"] = None
 
 for job in jobs.values():
     # Create processing times based on input processing times and machine input
@@ -375,6 +384,21 @@ for job_name, job in jobs.items():
 for machine_name, machine in machines.items():
     model.add_no_overlap(machine["interval_vars"])
 
+# Determine if a machine is utilized
+# Used for number of machine minimization
+for machine_name, machine in machines.items():
+    machine["is_utilized_var"] = model.new_bool_var(
+        f"is_machine_{machine_name}_utilized"
+    )
+    # If the number of jobs on a machine is greater than 0, then the machine is utilized
+    model.add(
+        sum(job["machine_vars"][machine_name] for job in jobs.values()) > 0
+    ).only_enforce_if(machine["is_utilized_var"])
+    # If the number of jobs on a machine is equal than 0, then the machine is not utilized
+    model.add(
+        sum(job["machine_vars"][machine_name] for job in jobs.values()) == 0
+    ).only_enforce_if(~machine["is_utilized_var"])
+
 # Ensure the same/different machine job constraints are respected
 for job_name, job in jobs.items():
     for same_machine_job_name in job["same_machine_jobs"]:
@@ -678,16 +702,14 @@ model.minimize(
         job["completion_time_weight"] * job["start+processing_time_var"]
         for job in jobs.values()
     )
-    +
     # Minimize the flow time
-    sum(
+    + sum(
         job["flow_time_weight"] * job["flow_time_var"]
         for job in jobs.values()
         if job["flow_time_var"] is not None
     )
-    +
     # Minimize the earliness
-    sum(
+    + sum(
         job["earliness_weight"] * job["earliness_var"]
         for job in jobs.values()
         if job["earliness_var"] is not None
@@ -699,6 +721,14 @@ model.minimize(
         for job in jobs.values()
         for pred_characteristics in job["predecessors"].values()
         if pred_characteristics["completion_time_wrt_var"] is not None
+    )
+    # Minimize the number of machines
+    + num_machines_weight
+    * sum(machine["is_utilized_var"] for machine in machines.values())
+    # Minimize specific machines
+    + sum(
+        machine["machine_weight"] * machine["is_utilized_var"]
+        for machine in machines.values()
     )
 )
 
