@@ -36,7 +36,9 @@ $^4$ The earliness of job $j$ with respect to predecessor job $i$ is defined as 
 
 * [uv](https://docs.astral.sh/uv/)
 
-## `schedule.py`
+## Usage
+
+### `schedule.py`
 
 This script attempts to find a feasible schedule based on the parameters of the problem. The parameters are specified as [toml](https://toml.io) via [standard input (stdin)](https://en.wikipedia.org/wiki/Standard_streams#Standard_input_(stdin)). If a feasible schedule exists, an output [csv](https://www.ietf.org/rfc/rfc4180.txt) is created with the start times that have been solved for as well as the input parameters. This output can be visualized with the `schedule_viz.py` script. If the start times are all specified, the script verifies if the schedule is feasible.
 
@@ -67,7 +69,11 @@ uv run schedule.py < schedule_input.toml > schedule_output.csv
 
 Note that PowerShell support for stdout is slightly broken. See [this workaround](https://github.com/PowerShell/PowerShell/issues/5974#issuecomment-1297513901).
 
-## `schedule_viz.py`
+#### Solver Parameters
+
+In addition to scheduling inputs, solver parameters can be specified as well. For a complete list of solver parameters, see [ortools/sat/sat_parameters.proto](https://github.com/google/or-tools/blob/stable/ortools/sat/sat_parameters.proto).
+
+### `schedule_viz.py`
 
 A schedule csv can be visualized with the `schedule_viz.py` script via stdin:
 

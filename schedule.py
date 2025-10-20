@@ -6,7 +6,6 @@
 
 from ortools.sat.python import cp_model
 import argparse
-import ast
 import csv
 import math
 import sys
@@ -733,7 +732,19 @@ model.minimize(
 )
 
 solver = cp_model.CpSolver()
-solver.parameters.max_time_in_seconds = 60
+
+# Read solver parameters if they exist
+if "solver" not in schedule_input.keys():
+    solver_parameters = {}
+elif "parameters" not in schedule_input["solver"].keys():
+    solver_parameters = {}
+else:
+    solver_parameters = schedule_input["solver"]["parameters"]
+
+# Set solver parameters
+for key, value in solver_parameters.items():
+    setattr(solver.parameters, key, value)
+
 solver.Solve(model)
 status_name = solver.status_name()
 

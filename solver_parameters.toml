@@ -1,0 +1,6 @@
+[solver.parameters]
+max_time_in_seconds = 60
+# Ensure a deterministic solve
+# Source: https://github.com/google/or-tools/discussions/3275#discussioncomment-4998643
+interleave_search = true
+num_workers = 1
